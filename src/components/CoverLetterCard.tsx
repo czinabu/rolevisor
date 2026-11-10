@@ -146,7 +146,7 @@ export function CoverLetterCard({
               Edit it above. Regenerating writes a new version and replaces your edits.
             </span>
           </div>
-          <DownloadPanel text={letter} kind="letter" />
+          <DownloadPanel text={letter} kind="letter" jobPosting={jobPosting} />
           {notes.length > 0 && (
             <ul className="list-disc space-y-1 pl-5 text-sm text-muted">
               {notes.map((n, i) => (
