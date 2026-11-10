@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import { Loading } from "@/components/Loading";
 import { runTask } from "@/lib/ai";
-import { friendlyMessage } from "@/lib/errors";
+import { useRequest } from "@/lib/useRequest";
 import { NoModel } from "@/components/FreeLabel";
 import { needsModel, type ModelSettings } from "@/lib/providers";
 import type { SuggestionsResult } from "@/lib/suggestions";
@@ -35,21 +34,14 @@ export function SuggestionsCard({
   jobPosting: string;
   settings: ModelSettings;
 }) {
-  const [result, setResult] = useState<SuggestionsResult | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const request = useRequest<SuggestionsResult>();
+  const { busy, error, data: result } = request;
 
-  async function run() {
-    setBusy(true);
-    setError("");
-    try {
-      setResult(await runTask<SuggestionsResult>(settings, "suggestions", { resume, background, jobPosting }));
-    } catch (e) {
-      setError(friendlyMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  }
+  // A refresh keeps the current suggestions on screen until the new ones arrive.
+  const run = () =>
+    request.run(() => runTask<SuggestionsResult>(settings, "suggestions", { resume, background, jobPosting }), {
+      keep: true,
+    });
 
   return (
     <section className="space-y-4 card p-5">

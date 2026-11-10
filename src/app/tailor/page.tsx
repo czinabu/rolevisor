@@ -18,7 +18,7 @@ import type { ResumeLayout } from "@/lib/layout";
 import { runTask } from "@/lib/ai";
 import { FREE_FEATURES, needsModel, PROVIDERS } from "@/lib/providers";
 import { NoModel } from "@/components/FreeLabel";
-import { friendlyMessage } from "@/lib/errors";
+import { useRequest } from "@/lib/useRequest";
 import {
   EDUCATION_STATUSES,
   EMPTY_EDUCATION,
@@ -33,6 +33,12 @@ import { useStoredState } from "@/lib/useStoredState";
 import { addApplication, newApplication } from "@/lib/applications";
 
 type Inputs = TailorRequest;
+
+/** Saving the tailored job to the application log, one step at a time. */
+type LogStep =
+  | { step: "offer" }
+  | { step: "form"; company: string; role: string }
+  | { step: "saved" };
 
 interface Tailored {
   result: TailorResult;
@@ -82,18 +88,14 @@ export default function TailorPage() {
     EMPTY,
   );
   const [tab, setTab] = useState<TabId>("tailor");
-  const [tailoring, setTailoring] = useState(false);
-  const [tailorError, setTailorError] = useState("");
+  const request = useRequest<Tailored>();
+  const { busy: tailoring, error: tailorError, data: tailored } = request;
   // Measured from the uploaded file. Kept in storage so it survives switching pages.
   const [stored, setStored] = useStoredState<{ layout: ResumeLayout | null }>("job-helper:layout", { layout: null });
   const layout = stored.layout;
   const setLayout = (layout: ResumeLayout | null) => setStored({ layout });
-  const [tailored, setTailored] = useState<Tailored | null>(null);
-  const [logForm, setLogForm] = useState<{
-    company: string;
-    role: string;
-  } | null>(null);
-  const [logged, setLogged] = useState(false);
+  // Saving this job to the application log: offered, then a short form, then saved.
+  const [log, setLog] = useState<LogStep>({ step: "offer" });
 
   const setBackground = (patch: Partial<Background>) =>
     setInputs({ ...inputs, background: { ...inputs.background, ...patch } });
@@ -119,24 +121,16 @@ export default function TailorPage() {
   async function tailor() {
     // With no model, the button shows the free results instead of failing.
     if (noModel) {
-      setTailorError("");
+      request.dismiss();
       showResults("format");
       return;
     }
-    setTailoring(true);
-    setTailorError("");
-    setTailored(null);
-    setLogForm(null);
-    setLogged(false);
-    try {
-      const result = await runTask<TailorResult>(settings, "tailor", inputs);
-      setTailored({ result, resume: inputs.resume });
-      showResults("tailor");
-    } catch (error) {
-      setTailorError(friendlyMessage(error));
-    } finally {
-      setTailoring(false);
-    }
+    setLog({ step: "offer" });
+    const done = await request.run(async () => ({
+      result: await runTask<TailorResult>(settings, "tailor", inputs),
+      resume: inputs.resume,
+    }));
+    if (done) showResults("tailor");
   }
 
   const hasEducation = schools.some((s) =>
@@ -368,8 +362,7 @@ export default function TailorPage() {
             className="ml-auto text-sm text-muted underline"
             onClick={() => {
               setInputs(EMPTY);
-              setTailored(null);
-              setTailorError("");
+              request.reset();
             }}
           >
             Clear everything
@@ -420,7 +413,7 @@ export default function TailorPage() {
                 jobPosting={inputs.jobPosting}
               />
               <div className="mt-8 card p-4 text-sm">
-                {logged ? (
+                {log.step === "saved" ? (
                   <p>
                     Saved. See it in your{" "}
                     <Link
@@ -431,7 +424,7 @@ export default function TailorPage() {
                     </Link>
                     .
                   </p>
-                ) : logForm ? (
+                ) : log.step === "form" ? (
                   <form
                     className="flex flex-wrap gap-3"
                     onSubmit={(e) => {
@@ -439,13 +432,13 @@ export default function TailorPage() {
                       try {
                         addApplication(
                           newApplication({
-                            company: logForm.company.trim(),
-                            role: logForm.role.trim(),
+                            company: log.company.trim(),
+                            role: log.role.trim(),
                           }),
                         );
-                        setLogged(true);
+                        setLog({ step: "saved" });
                       } catch {
-                        setTailorError(
+                        request.fail(
                           "Couldn't save to the log. Browser storage may be blocked.",
                         );
                       }
@@ -454,22 +447,22 @@ export default function TailorPage() {
                     <input
                       className="field w-auto flex-1"
                       placeholder="Company"
-                      value={logForm.company}
+                      value={log.company}
                       onChange={(e) =>
-                        setLogForm({ ...logForm, company: e.target.value })
+                        setLog({ ...log, company: e.target.value })
                       }
                     />
                     <input
                       className="field w-auto flex-1"
                       placeholder="Job title"
-                      value={logForm.role}
+                      value={log.role}
                       onChange={(e) =>
-                        setLogForm({ ...logForm, role: e.target.value })
+                        setLog({ ...log, role: e.target.value })
                       }
                     />
                     <button
                       className="btn"
-                      disabled={!logForm.company.trim() && !logForm.role.trim()}
+                      disabled={!log.company.trim() && !log.role.trim()}
                     >
                       Save
                     </button>
@@ -480,7 +473,8 @@ export default function TailorPage() {
                     <button
                       className="btn-secondary"
                       onClick={() =>
-                        setLogForm({
+                        setLog({
+                          step: "form",
                           company: "",
                           role: inputs.background.targetRole,
                         })

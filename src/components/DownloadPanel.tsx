@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRequest } from "@/lib/useRequest";
 import { downloadStem, guessCompany } from "@/lib/companyName";
 import { LINK_FIELDS, normalizeUrl, useProfileLinks } from "@/lib/profileLinks";
 import { PROJECT_LINK_FIELDS, addProjectLinks, findProjects, linksFor, useProjectLinks } from "@/lib/projectLinks";
@@ -33,8 +34,8 @@ export function DownloadPanel({
   const [typed, setTyped] = useState<{ posting: string; company: string } | null>(null);
   const company = typed && typed.posting === jobPosting ? typed.company : guessCompany(jobPosting);
   const stem = downloadStem(kind, text, company);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const request = useRequest<void>();
+  const { busy, error } = request;
   const [links, setLinks] = useProfileLinks();
   const urls = {
     linkedin: normalizeUrl(links.linkedin),
@@ -44,22 +45,18 @@ export function DownloadPanel({
   const [projectLinks, setProjectLinks] = useProjectLinks();
   const projects = useMemo(() => (kind === "resume" ? findProjects(text) : []), [kind, text]);
 
-  async function download(format: "pdf" | "docx") {
-    setBusy(true);
-    setError("");
-    try {
-      const make =
-        kind === "resume"
-          ? format === "pdf" ? makeResumePdf : makeResumeDocx
-          : format === "pdf" ? makeLetterPdf : makeLetterDocx;
-      const body = kind === "resume" ? addProjectLinks(text, projectLinks) : text;
-      saveBlob(await make(body, template, urls), `${stem}.${format}`);
-    } catch {
-      setError("Couldn't build the file. Try the other format, or copy the text instead.");
-    } finally {
-      setBusy(false);
-    }
-  }
+  const download = (format: "pdf" | "docx") =>
+    request.run(
+      async () => {
+        const make =
+          kind === "resume"
+            ? format === "pdf" ? makeResumePdf : makeResumeDocx
+            : format === "pdf" ? makeLetterPdf : makeLetterDocx;
+        const body = kind === "resume" ? addProjectLinks(text, projectLinks) : text;
+        saveBlob(await make(body, template, urls), `${stem}.${format}`);
+      },
+      { describe: () => "Couldn't build the file. Try the other format, or copy the text instead." },
+    );
 
   return (
     <div className="space-y-2">

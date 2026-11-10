@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { LinkPrompt } from "@/components/LinkPrompt";
 import { Loading } from "@/components/Loading";
 import { runTask } from "@/lib/ai";
-import { friendlyMessage } from "@/lib/errors";
+import { useRequest } from "@/lib/useRequest";
 import { checkFormat, describeLayout, type CheckStatus, type FormatReport } from "@/lib/formatCheck";
 import type { FormatReview } from "@/lib/formatReview";
 import type { ResumeLayout } from "@/lib/layout";
@@ -42,29 +42,16 @@ export function FormatCard({
     () => (jobPosting.trim() ? adviseLinks(jobPosting, targetRole) : undefined),
     [jobPosting, targetRole],
   );
-  const [review, setReview] = useState<FormatReview | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const request = useRequest<FormatReview>();
+  const { busy, error, data: review, reset } = request;
 
-  // An old review no longer matches once the resume changes.
-  useEffect(() => setReview(null), [resume, layout]);
+  // An old review no longer matches once the resume changes. One still on its way is dropped too.
+  useEffect(reset, [resume, layout, reset]);
 
-  async function ask() {
-    setBusy(true);
-    setError("");
-    try {
-      setReview(
-        await runTask<FormatReview>(settings, "format", {
-          resume,
-          layout: describeLayout(layout, report),
-        }),
-      );
-    } catch (e) {
-      setError(friendlyMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  }
+  const ask = () =>
+    request.run(() => runTask<FormatReview>(settings, "format", { resume, layout: describeLayout(layout, report) }), {
+      keep: true,
+    });
 
   return (
     <section className="space-y-4 card p-5">

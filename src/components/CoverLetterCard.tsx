@@ -11,7 +11,7 @@ import {
   type Length,
   type Tone,
 } from "@/lib/coverLetter";
-import { friendlyMessage } from "@/lib/errors";
+import { useRequest } from "@/lib/useRequest";
 import { NoModel } from "@/components/FreeLabel";
 import { needsModel, type ModelSettings } from "@/lib/providers";
 import type { Background } from "@/lib/tailor";
@@ -33,16 +33,15 @@ export function CoverLetterCard({
   const [instructions, setInstructions] = useState("");
   const [letter, setLetter] = useState("");
   const [notes, setNotes] = useState<string[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  // The letter lives in its own state because the person can edit it after it's written.
+  const request = useRequest<CoverLetterResult>();
+  const { busy, error } = request;
   const [copied, setCopied] = useState(false);
 
   const ready = resume.trim() && jobPosting.trim();
 
-  async function write() {
-    setBusy(true);
-    setError("");
-    try {
+  const write = () =>
+    request.run(async () => {
       const result = await runTask<CoverLetterResult>(settings, "coverLetter", {
         resume,
         background,
@@ -55,19 +54,15 @@ export function CoverLetterCard({
       setLetter(result.letter);
       setNotes(result.notes);
       setCopied(false);
-    } catch (e) {
-      setError(friendlyMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  }
+      return result;
+    });
 
   async function copy() {
     try {
       await navigator.clipboard.writeText(letter);
       setCopied(true);
     } catch {
-      setError("Couldn't copy. Select the text and copy it yourself.");
+      request.fail("Couldn't copy. Select the text and copy it yourself.");
     }
   }
 

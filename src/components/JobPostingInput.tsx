@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { friendlyMessage } from "@/lib/errors";
+import { useRequest } from "@/lib/useRequest";
 import { isImage, parseJobPosting } from "@/lib/parseJobPosting";
 import { needsModel } from "@/lib/providers";
 import { useSettings } from "@/lib/useSettings";
@@ -20,35 +20,29 @@ interface Props {
 export function JobPostingInput({ text, onChange }: Props) {
   const { settings, loaded } = useSettings();
   const claudeReads = loaded && settings.provider === "claude" && !needsModel(settings);
-  const [busy, setBusy] = useState(false);
+  // The answer of a finished read is the note saying how the text was read.
+  const reading = useRequest<string>();
+  const { busy, error } = reading;
+  const note = reading.data ?? "";
   const [progress, setProgress] = useState<number | null>(null);
-  const [error, setError] = useState("");
-  const [note, setNote] = useState("");
 
-  async function read(file: File) {
-    setBusy(true);
-    setProgress(null);
-    setError("");
-    setNote("");
-    try {
-      const parsed = await parseJobPosting(file, loaded ? settings : null, setProgress);
-      onChange(text.trim() ? `${text.trim()}\n\n${parsed.text}` : parsed.text);
-      setNote(
-        parsed.readBy === "claude"
+  const read = (file: File) =>
+    reading.run(async () => {
+      setProgress(null);
+      try {
+        const parsed = await parseJobPosting(file, loaded ? settings : null, setProgress);
+        onChange(text.trim() ? `${text.trim()}\n\n${parsed.text}` : parsed.text);
+        return parsed.readBy === "claude"
           ? "Text read from your screenshot by Claude. Give it a quick look before tailoring."
           : parsed.readBy === "browser"
             ? parsed.claudeError
               ? `Claude couldn't read the screenshot, so it was read in this browser instead. Check it below for mistakes. (${parsed.claudeError.replace(/\.$/, "")})`
               : "Text read from your screenshot in this browser. Check it below for mistakes. Adding a Claude API key makes screenshot reading much more accurate."
-            : `Text read from ${file.name}.`,
-      );
-    } catch (e) {
-      setError(friendlyMessage(e));
-    } finally {
-      setBusy(false);
-      setProgress(null);
-    }
-  }
+            : `Text read from ${file.name}.`;
+      } finally {
+        setProgress(null);
+      }
+    });
 
   return (
     <div
