@@ -107,6 +107,7 @@ export default function Example() {
             result={EXAMPLE_TAILORED}
             originalResume={EXAMPLE_INPUTS.resume}
             jobPosting={EXAMPLE_INPUTS.jobPosting}
+            background={EXAMPLE_INPUTS.background}
           />
         </div>
 
@@ -115,6 +116,7 @@ export default function Example() {
             resume={EXAMPLE_INPUTS.resume}
             jobPosting={EXAMPLE_INPUTS.jobPosting}
             background={EXAMPLE_INPUTS.background}
+            tailoredResume={EXAMPLE_TAILORED.tailoredResume}
           />
         </div>
 

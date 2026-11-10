@@ -90,24 +90,6 @@ export const EXAMPLE_TAILORED: TailorResult = {
     "SQL used on the job",
     "Bachelor's degree (equivalent experience accepted)",
   ],
-  keywords: [
-    "SQL",
-    "Excel",
-    "pivot tables",
-    "Tableau",
-    "Power BI",
-    "dashboard",
-    "data analysis",
-    "data visualization",
-    "stakeholders",
-    "inventory",
-    "shrink",
-    "sales trends",
-    "forecasting",
-    "store operations",
-    "retail",
-    "Python",
-  ],
   tailoredResume: `Sam Ortega
 Columbus, OH · sam.ortega@example.com · (555) 014-2290 · LinkedIn
 

@@ -1,6 +1,15 @@
 import { describe, expect, test } from "vitest";
-import { EXAMPLE_INPUTS } from "./example";
-import { extractKeywords, hasKeyword, matchKeywords, missingKeywords, weighLines } from "./keywordMatch";
+import { EXAMPLE_INPUTS, EXAMPLE_TAILORED } from "./example";
+import {
+  compareKeywords,
+  evidence,
+  extractKeywords,
+  hasKeyword,
+  matchKeywords,
+  missingKeywords,
+  weighLines,
+} from "./keywordMatch";
+import { backgroundText } from "./tailor";
 
 const names = (list: { keyword: string }[]) => list.map((k) => k.keyword);
 const find = <T extends { keyword: string }>(list: T[], keyword: string) => list.find((k) => k.keyword === keyword);
@@ -169,5 +178,54 @@ describe("matchKeywords", () => {
 
   test("missingKeywords lists what the resume lacks, most important first", () => {
     expect(missingKeywords("Excel", "Requirements\n- SQL\n- Excel\nNice to have\n- Python")).toEqual(["SQL", "Python"]);
+  });
+});
+
+describe("honest adds", () => {
+  test("sorts missing keywords by what backs them up", () => {
+    const posting = "Requirements\n- SQL\n- Inventory management\n- Forecasting\n- Python";
+    const resume = "- Ran weekly inventory counts\n- Built sales forecasts in Excel";
+    const match = matchKeywords(resume, posting, "SQL certificate, 2025");
+    expect(evidence(find(match.missing, "SQL")!)).toBe("background");
+    expect(find(match.missing, "Inventory management")?.related).toEqual(["inventory"]);
+    expect(find(match.missing, "Forecasting")?.related).toEqual(["forecasts"]);
+    expect(evidence(find(match.missing, "Python")!)).toBe("none");
+  });
+
+  test("broad words don't count as related", () => {
+    const match = matchKeywords("- Did sales analysis", "Requirements\n- Data analysis");
+    expect(find(match.missing, "Data analysis")?.related).toEqual([]);
+  });
+});
+
+describe("compareKeywords", () => {
+  const { resume, jobPosting, background } = EXAMPLE_INPUTS;
+  const change = compareKeywords(resume, EXAMPLE_TAILORED.tailoredResume, jobPosting, backgroundText(background));
+
+  test("scores the resume before and after tailoring", () => {
+    expect(change.before.score).toBe(matchKeywords(resume, jobPosting, backgroundText(background)).score);
+    expect(change.after.score!).toBeGreaterThan(change.before.score!);
+    expect(names(change.added)).toEqual(expect.arrayContaining(["SQL", "Tableau"]));
+    expect(change.dropped).toEqual([]);
+  });
+
+  test("flags added keywords that nothing the person gave supports", () => {
+    // SQL and Tableau are on Sam's background notes, so they're backed up.
+    expect(names(change.unsupported)).not.toContain("SQL");
+    expect(names(change.unsupported)).not.toContain("Tableau");
+    const made = compareKeywords("- Helped customers", "- Helped customers with SQL", "Requirements\n- SQL");
+    expect(names(made.unsupported)).toEqual(["SQL"]);
+  });
+
+  test("flags keywords repeated enough to look stuffed", () => {
+    const posting = "Requirements\n- SQL";
+    const stuffed = compareKeywords("SQL", "SQL SQL SQL SQL SQL", posting);
+    expect(stuffed.overused.map((o) => [o.keyword.keyword, o.count])).toEqual([["SQL", 5]]);
+    expect(compareKeywords("SQL", "SQL and more SQL", posting).overused).toEqual([]);
+  });
+
+  test("notices keywords tailoring dropped", () => {
+    const dropped = compareKeywords("Excel and SQL", "SQL", "Requirements\n- SQL\n- Excel");
+    expect(names(dropped.dropped)).toEqual(["Excel"]);
   });
 });

@@ -30,6 +30,20 @@ export interface KeywordResult extends PostingKeyword {
   inResume: boolean;
   /** Not in the resume, but in the background notes or skills the person gave. */
   inBackground: boolean;
+  /**
+   * Not in the resume as written, but the resume uses a word from it in some form ("inventory
+   * counts" for "Inventory management", "forecasts" for "Forecasting"). Those are the resume's own
+   * words, so a rewording may be honest, if the person really did the thing.
+   */
+  related: string[];
+}
+
+/** How honestly a missing keyword could be added, from what the person already gave. */
+export type Evidence = "background" | "related" | "none";
+
+export function evidence(k: KeywordResult): Evidence {
+  if (k.inBackground) return "background";
+  return k.related.length ? "related" : "none";
 }
 
 export interface KeywordMatch {
@@ -332,9 +346,16 @@ export function extractKeywords(posting: string, terms: readonly SkillTerm[] = S
  * notes but not on the resume are marked, since those are the easiest ones to add honestly.
  */
 export function matchKeywords(resume: string, posting: string, background = ""): KeywordMatch {
+  let resumeStems: Map<string, string> | null = null;
   const keywords: KeywordResult[] = extractKeywords(posting).map((k) => {
     const inResume = hasAny(resume, k.variants);
-    return { ...k, inResume, inBackground: !inResume && background.trim() !== "" && hasAny(background, k.variants) };
+    const inBackground = !inResume && background.trim() !== "" && hasAny(background, k.variants);
+    let related: string[] = [];
+    if (!inResume) {
+      resumeStems ??= stemsOf(resume);
+      related = relatedWords(k, resumeStems);
+    }
+    return { ...k, inResume, inBackground, related };
   });
   const total = keywords.reduce((sum, k) => sum + k.weight, 0);
   const got = keywords.reduce((sum, k) => sum + (k.inResume ? k.weight : 0), 0);
@@ -343,6 +364,93 @@ export function matchKeywords(resume: string, posting: string, background = ""):
     keywords,
     found: keywords.filter((k) => k.inResume),
     missing: keywords.filter((k) => !k.inResume),
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Related wording, for missing keywords
+
+// Words too broad to say the resume is close to a keyword: "analysis" in "sales analysis" says
+// nothing about "Data analysis".
+const WEAK = new Set(
+  `data management manager analysis analyst development developer systems system services service business
+  customer customers technical tools tool software process processes program programs project projects
+  operations operational design engineering engineer support planning reporting reports quality control
+  general basic advanced senior junior lead`.split(/\s+/),
+);
+
+/** A rough word stem, so "forecasts", "forecasted", and "forecasting" meet. */
+function stem(word: string): string {
+  const w = word.toLowerCase().replace(/['’]s$/, "");
+  const cut = w.replace(/(ings?|ed|es|s|ions?|ments?|ers?)$/, "");
+  return cut.length >= 4 ? cut : w;
+}
+
+/** Each stem in a text, with the first word that produced it. */
+function stemsOf(text: string): Map<string, string> {
+  const stems = new Map<string, string>();
+  for (const word of text.match(TOKEN) ?? []) {
+    const s = stem(word);
+    if (!stems.has(s)) stems.set(s, word);
+  }
+  return stems;
+}
+
+/** The resume's own words that share a stem with a meaningful word of the keyword. */
+function relatedWords(k: PostingKeyword, resumeStems: Map<string, string>): string[] {
+  const words = new Set<string>();
+  for (const v of k.variants) {
+    for (const word of v.text.match(TOKEN) ?? []) {
+      const lower = word.toLowerCase();
+      if (lower.length < 4 || STOP.has(lower) || GENERIC.has(lower) || WEAK.has(lower)) continue;
+      const found = resumeStems.get(stem(word));
+      if (found) words.add(found);
+    }
+  }
+  return [...words];
+}
+
+// ---------------------------------------------------------------------------------------------
+// Before and after tailoring
+
+/** A keyword used this many times or more in a resume starts to read as stuffing. */
+export const OVERUSE = 5;
+
+export interface KeywordChange {
+  before: KeywordMatch;
+  after: KeywordMatch;
+  /** In the tailored resume, not the original. */
+  added: KeywordResult[];
+  /**
+   * Added by tailoring with nothing behind it in the original resume or the background notes.
+   * Usually the rewrite used the posting's words for something the person did, but it's worth a
+   * check that each one is true.
+   */
+  unsupported: KeywordResult[];
+  /** In the original resume, dropped by tailoring. */
+  dropped: KeywordResult[];
+  /** Keywords the tailored resume repeats often enough to look stuffed, with the count. */
+  overused: { keyword: KeywordResult; count: number }[];
+}
+
+/** Scores the original and tailored resumes against the same posting, and what changed. */
+export function compareKeywords(original: string, tailored: string, posting: string, background = ""): KeywordChange {
+  const before = matchKeywords(original, posting, background);
+  const after = matchKeywords(tailored, posting, background);
+  const was = new Map(before.keywords.map((k) => [k.keyword, k]));
+  const added = after.found.filter((k) => !was.get(k.keyword)?.inResume);
+  return {
+    before,
+    after,
+    added,
+    unsupported: added.filter((k) => {
+      const old = was.get(k.keyword);
+      return !old || evidence(old) === "none";
+    }),
+    dropped: after.missing.filter((k) => was.get(k.keyword)?.inResume),
+    overused: after.found
+      .map((k) => ({ keyword: k, count: countVariants(tailored, k.variants) }))
+      .filter((o) => o.count >= OVERUSE && o.count > countVariants(original, o.keyword.variants)),
   };
 }
 
