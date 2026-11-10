@@ -123,6 +123,7 @@ export function addProfileLinks(text: string, links?: ProfileLinkUrls): string {
 }
 
 type Word = { text: string; url?: string };
+type StyledWord = Word & { style: "normal" | "bold" | "italic" };
 
 /** Splits a contact line into words, keeping links: [label](url), bare URLs, and email addresses become clickable. */
 export function contactWords(line: string): Word[] {
@@ -145,6 +146,16 @@ export function contactWords(line: string): Word[] {
   plain(line.slice(last));
   return words;
 }
+
+/** The line's words with links, or null when it has none, so plain lines keep the simpler layout. */
+function linkedWords(line: string): Word[] | null {
+  if (!/\]\((?:https?:\/\/|mailto:)|https?:\/\/|www\.|(?:linkedin|github)\.com\//i.test(line)) return null;
+  const words = contactWords(line);
+  return words.some((w) => w.url) ? words : null;
+}
+
+/** The text a reader sees: [label](url) becomes just the label. */
+const shownText = (line: string) => line.replace(/\[([^\]]+)\]\(((?:https?:\/\/|mailto:)[^)\s]+)\)/g, "$1");
 
 /** Layout settings tried in order until the resume fits on one page. Type never drops below 10 pt, margins below 0.6 inch. */
 type Fit = { type: number; space: number; margin: number };
@@ -212,7 +223,7 @@ function renderResume(doc: Doc, blocks: Block[], template: TemplateId, fit: Fit)
   ) => {
     const indent = o.indent ?? 0;
     face(o.size, o.style);
-    const lines: string[] = doc.splitTextToSize(str, width - indent);
+    const lines: string[] = doc.splitTextToSize(shownText(str), width - indent);
     if (o.keep) room(lines.length * o.size * LEAD); // don't split a bullet across pages
     lines.forEach((line, n) => {
       const base = nextLine(o.size);
@@ -223,6 +234,55 @@ function renderResume(doc: Doc, blocks: Block[], template: TemplateId, fit: Fit)
       else doc.text(line, margin + indent, base);
     });
     y += o.gap ?? 0;
+  };
+
+  /** Wrapped words where some are links: drawn one by one so each link is clickable and underlined. */
+  const writeWords = (
+    words: Word[],
+    o: { size: number; style?: Style; indent?: number; gap?: number; keep?: boolean; before?: (base: number) => void },
+  ) => {
+    const indent = o.indent ?? 0;
+    face(o.size, o.style);
+    const space = doc.getTextWidth(" ");
+    const rows: Word[][] = [[]];
+    let rowW = 0;
+    for (const w of words) {
+      const ww = doc.getTextWidth(w.text);
+      if (rowW && rowW + space + ww > width - indent) {
+        rows.push([]);
+        rowW = 0;
+      }
+      rows[rows.length - 1].push(w);
+      rowW += (rowW ? space : 0) + ww;
+    }
+    if (o.keep) room(rows.length * o.size * LEAD);
+    rows.forEach((row, n) => {
+      const base = nextLine(o.size);
+      if (n === 0) o.before?.(base);
+      face(o.size, o.style);
+      drawWords(row, margin + indent, base, o.size, () => o.style ?? "normal");
+    });
+    y += o.gap ?? 0;
+  };
+
+  /** Draws words left to right from x; links get the accent color, an underline, and a click target. Returns the end x. */
+  const drawWords = (row: Word[], x: number, base: number, size: number, styleOf: (w: Word) => Style, plain: Rgb = INK) => {
+    row.forEach((w, n) => {
+      face(size, styleOf(w));
+      const ww = doc.getTextWidth(w.text);
+      // A link of several words gets one unbroken underline.
+      const joined = w.url && row[n + 1]?.url === w.url ? doc.getTextWidth(" ") : 0;
+      ink(w.url && modern ? ACCENT : plain);
+      doc.text(w.text, x, base);
+      if (w.url) {
+        doc.link(x, base - size, ww, size * 1.25, { url: w.url });
+        doc.setDrawColor(...(modern ? ACCENT : INK));
+        doc.setLineWidth(0.4);
+        doc.line(x, base + 1.2, x + ww + joined, base + 1.2);
+      }
+      x += ww + doc.getTextWidth(" ");
+    });
+    return x;
   };
 
   const writeContact = (line: string) => {
@@ -243,19 +303,7 @@ function renderResume(doc: Doc, blocks: Block[], template: TemplateId, fit: Fit)
     for (const row of rows) {
       const base = nextLine(size);
       const total = row.reduce((sum, w, i) => sum + doc.getTextWidth(w.text) + (i ? space : 0), 0);
-      let x = modern ? margin : (PAGE.w - total) / 2;
-      for (const w of row) {
-        const ww = doc.getTextWidth(w.text);
-        ink(w.url ? (modern ? ACCENT : INK) : modern ? MUTED : INK);
-        doc.text(w.text, x, base);
-        if (w.url) {
-          doc.link(x, base - size, ww, size * 1.25, { url: w.url });
-          doc.setDrawColor(...(modern ? ACCENT : INK));
-          doc.setLineWidth(0.4);
-          doc.line(x, base + 1.2, x + ww, base + 1.2);
-        }
-        x += ww + space;
-      }
+      drawWords(row, modern ? margin : (PAGE.w - total) / 2, base, size, () => "normal", modern ? MUTED : INK);
     }
     y += sp(1);
   };
@@ -279,13 +327,45 @@ function renderResume(doc: Doc, blocks: Block[], template: TemplateId, fit: Fit)
     const roleStyle: Style = modern ? "normal" : "italic";
     // Company in bold, then the role; whatever doesn't fit beside the dates wraps under them.
     face(entrySize, "bold");
-    const [company, ...companyRest] = doc.splitTextToSize(entry.company, leftW) as string[];
-    const compW = doc.getTextWidth(company);
-    const base = nextLine(entrySize);
-    ink(INK);
-    doc.text(company, margin, base);
-    let rest: string[] = companyRest.length ? [companyRest.join(" ")] : [];
-    if (entry.role) {
+    const linked = linkedWords(entry.company) || linkedWords(entry.role)
+      ? [
+          ...contactWords(entry.company).map((w) => ({ ...w, style: w.url ? "normal" : "bold" }) as StyledWord),
+          ...(entry.role
+            ? [{ text: "|", style: "normal" } as StyledWord, ...contactWords(entry.role).map((w) => ({ ...w, style: w.url ? "normal" : roleStyle }) as StyledWord)]
+            : []),
+        ]
+      : null;
+    let compW = 0;
+    let rest: string[] = [];
+    let base: number;
+    if (linked) {
+      // A project line with links ("Rolevisor | Live demo | GitHub repo"): the name in bold, the links plain.
+      const styleOf = (w: Word) => (w as StyledWord).style;
+      const measure = (w: Word) => (face(entrySize, styleOf(w)), doc.getTextWidth(w.text));
+      const space = doc.getTextWidth(" ");
+      const rows: Word[][] = [[]];
+      let rowW = 0;
+      for (const w of linked) {
+        const ww = measure(w);
+        if (rowW && rowW + space + ww > (rows.length === 1 ? leftW : width)) {
+          rows.push([]);
+          rowW = 0;
+        }
+        rows[rows.length - 1].push(w);
+        rowW += (rowW ? space : 0) + ww;
+      }
+      base = nextLine(entrySize);
+      drawWords(rows[0], margin, base, entrySize, styleOf);
+      for (const row of rows.slice(1)) drawWords(row, margin, nextLine(entrySize), entrySize, styleOf);
+    } else {
+      const [company, ...companyRest] = doc.splitTextToSize(entry.company, leftW) as string[];
+      compW = doc.getTextWidth(company);
+      base = nextLine(entrySize);
+      ink(INK);
+      doc.text(company, margin, base);
+      rest = companyRest.length ? [companyRest.join(" ")] : [];
+    }
+    if (entry.role && !linked) {
       face(entrySize, roleStyle);
       const role = `  |  ${entry.role}`;
       const fits = !rest.length && compW + doc.getTextWidth(role) <= leftW;
@@ -295,7 +375,7 @@ function renderResume(doc: Doc, blocks: Block[], template: TemplateId, fit: Fit)
     face(entrySize - 0.5);
     ink(modern ? MUTED : INK);
     doc.text(entry.dates, PAGE.w - margin, base, { align: "right" });
-    for (const r of rest) write(r, { size: entrySize, style: roleStyle });
+    for (const r of rest) if (r) write(r, { size: entrySize, style: roleStyle });
     y += sp(2);
   };
 
@@ -324,7 +404,8 @@ function renderResume(doc: Doc, blocks: Block[], template: TemplateId, fit: Fit)
         y += sp(4);
       }
     } else if (b.kind === "bullet") {
-      write(b.text, {
+      const words = linkedWords(b.text);
+      (words ? (o: Parameters<typeof write>[1]) => writeWords(words, o) : (o: Parameters<typeof write>[1]) => write(b.text, o))({
         size: body,
         indent: 14,
         gap: sp(1.5),
@@ -337,7 +418,9 @@ function renderResume(doc: Doc, blocks: Block[], template: TemplateId, fit: Fit)
       });
     } else {
       const entry = parseEntryLine(b.text);
+      const words = entry ? null : linkedWords(b.text);
       if (entry) writeEntry(entry, i);
+      else if (words) writeWords(words, { size: body, gap: sp(1) });
       else write(b.text, { size: body, gap: sp(1) });
     }
   });
@@ -450,19 +533,28 @@ export function makeResumeDocx(text: string, template: TemplateId, links?: Profi
   const accent = "1D4ED8";
   const linkTargets: string[] = [];
   const blocks = parseResumeText(addProfileLinks(text, links));
+  /** Runs for a line with [label](url) links or web addresses in it; the links get the accent color and an underline. */
+  const linkRuns = (line: string, plain: Omit<Run, "text"> = {}): Run[] => {
+    // Words of one link ("Live demo") share a run, so the underline doesn't break at the space.
+    const words: Word[] = [];
+    for (const w of contactWords(line)) {
+      const last = words[words.length - 1];
+      if (w.url && last?.url === w.url) last.text += ` ${w.text}`;
+      else words.push({ ...w });
+    }
+    return words.flatMap((w, n): Run[] => {
+      const gap: Run[] = n ? [{ text: " ", ...plain }] : [];
+      if (!w.url) return [...gap, { ...plain, text: w.text }];
+      linkTargets.push(w.url);
+      return [...gap, { text: w.text, size: plain.size, color: classic ? undefined : accent, rId: `rLink${linkTargets.length - 1}` }];
+    });
+  };
   const paras: Para[] = blocks.map((b, i): Para => {
     switch (b.kind) {
       case "name":
         return { text: b.text, size: classic ? 20 : 26, bold: true, center: classic, after: 40 };
       case "contact": {
-        const muted = classic ? undefined : "5A626E";
-        const runs = contactWords(b.text).flatMap((w, n): Run[] => {
-          const gap: Run[] = n ? [{ text: " " }] : [];
-          if (!w.url) return [...gap, { text: w.text, color: muted }];
-          linkTargets.push(w.url);
-          return [...gap, { text: w.text, color: classic ? undefined : accent, rId: `rLink${linkTargets.length - 1}` }];
-        });
-        return { text: b.text, size: 10, center: classic, runs };
+        return { text: b.text, size: 10, center: classic, runs: linkRuns(b.text, { color: classic ? undefined : "5A626E" }) };
       }
       case "heading":
         return {
@@ -481,11 +573,18 @@ export function makeResumeDocx(text: string, template: TemplateId, links?: Profi
           size: 11,
           hang: true,
           after: 10,
-          runs: [{ text: "•", color: classic ? undefined : accent }, { text: `\t${b.text}` }],
+          runs: [
+            { text: "•", color: classic ? undefined : accent },
+            { text: "\t" },
+            ...(linkedWords(b.text) ? linkRuns(b.text) : [{ text: b.text }]),
+          ],
         };
       default: {
         const entry = parseEntryLine(b.text);
-        if (!entry) return { text: b.text, size: 11, keepNext: blocks[i - 1]?.kind === "heading" };
+        if (!entry) {
+          const runs = linkedWords(b.text) ? linkRuns(b.text) : undefined;
+          return { text: b.text, size: 11, keepNext: blocks[i - 1]?.kind === "heading", runs };
+        }
         return {
           text: "",
           size: 11.5,
@@ -494,8 +593,12 @@ export function makeResumeDocx(text: string, template: TemplateId, links?: Profi
           keepNext: true,
           tabRight: true,
           runs: [
-            { text: entry.company, bold: true },
-            ...(entry.role ? [{ text: `  |  ${entry.role}`, italic: classic }] : []),
+            ...(linkedWords(entry.company) ? linkRuns(entry.company, { bold: true }) : [{ text: entry.company, bold: true }]),
+            ...(entry.role
+              ? linkedWords(entry.role)
+                ? [{ text: "  |  ", italic: classic }, ...linkRuns(entry.role, { italic: classic })]
+                : [{ text: `  |  ${entry.role}`, italic: classic }]
+              : []),
             { text: `\t${entry.dates}`, size: 11, color: classic ? undefined : "5A626E" },
           ],
         };

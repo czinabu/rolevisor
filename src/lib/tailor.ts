@@ -150,6 +150,7 @@ Profile links: say whether LinkedIn and GitHub links would help for this job. Li
 - never write, guess, or shorten a profile URL; copy one only if it's in the original resume exactly,
 - keep the words "LinkedIn" or "GitHub" in the contact line if the original has them,
 - don't add those words when the original doesn't have them.
+Project links work the same way: Rolevisor asks for each project's live demo and code addresses and links them when the resume is downloaded. Keep words like "Live demo" or "GitHub repo" next to a project if the original has them, keep each project's name as the original writes it, and never write or guess a project URL.
 
 The tailored resume follows the writing style below too: start bullets with plain, specific action verbs (led, built, cut, trained, ran) instead of buzzwords, and keep the summary to concrete facts about the person rather than adjectives like "dynamic" or "results-driven". Keep the original resume's own wording where it's already good. For dates, use the same style as the original resume.
 

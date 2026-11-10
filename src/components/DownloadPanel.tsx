@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { downloadStem, guessCompany } from "@/lib/companyName";
 import { LINK_FIELDS, normalizeUrl, useProfileLinks } from "@/lib/profileLinks";
+import { PROJECT_LINK_FIELDS, addProjectLinks, findProjects, linksFor, useProjectLinks } from "@/lib/projectLinks";
 import {
   TEMPLATES,
   makeLetterDocx,
@@ -40,6 +41,8 @@ export function DownloadPanel({
     github: normalizeUrl(links.github),
     website: normalizeUrl(links.website),
   };
+  const [projectLinks, setProjectLinks] = useProjectLinks();
+  const projects = useMemo(() => (kind === "resume" ? findProjects(text) : []), [kind, text]);
 
   async function download(format: "pdf" | "docx") {
     setBusy(true);
@@ -49,7 +52,8 @@ export function DownloadPanel({
         kind === "resume"
           ? format === "pdf" ? makeResumePdf : makeResumeDocx
           : format === "pdf" ? makeLetterPdf : makeLetterDocx;
-      saveBlob(await make(text, template, urls), `${stem}.${format}`);
+      const body = kind === "resume" ? addProjectLinks(text, projectLinks) : text;
+      saveBlob(await make(body, template, urls), `${stem}.${format}`);
     } catch {
       setError("Couldn't build the file. Try the other format, or copy the text instead.");
     } finally {
@@ -122,6 +126,61 @@ export function DownloadPanel({
               );
             })}
           </div>
+        </fieldset>
+      )}
+      {projects.length > 0 && (
+        <fieldset className="space-y-3 rounded-md border border-line p-3">
+          <legend className="px-1 text-sm font-medium">Project links</legend>
+          <p className="text-xs text-muted">
+            Add the address for each project&apos;s live demo or code. Words like &quot;Live demo&quot; or
+            &quot;GitHub repo&quot; next to the project become clickable links; if they aren&apos;t there, the
+            link is added after the project&apos;s name. Leave a box blank to skip it. Saved in this browser only.
+          </p>
+          {projects.map((p) => {
+            const saved = linksFor(p.key, projectLinks) ?? { demo: "", code: "" };
+            return (
+              <div key={p.key} className="space-y-1">
+                <p className="text-sm font-medium">{p.name}</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {PROJECT_LINK_FIELDS.map((f) => {
+                    const value = saved[f.kind] ?? "";
+                    const bad = value.trim() !== "" && !normalizeUrl(value);
+                    const word = p.words[f.kind];
+                    return (
+                      <label key={f.kind} className="space-y-1 text-sm">
+                        <span className="text-muted">{f.label}</span>
+                        <input
+                          className="field"
+                          type="url"
+                          inputMode="url"
+                          placeholder={f.placeholder}
+                          value={value}
+                          aria-invalid={bad}
+                          aria-label={`${p.name}: ${f.label}`}
+                          disabled={p.linked.includes(f.kind)}
+                          onChange={(e) =>
+                            setProjectLinks({ ...projectLinks, [p.key]: { ...saved, [f.kind]: e.target.value } })
+                          }
+                        />
+                        {p.linked.includes(f.kind) ? (
+                          <span className="text-xs text-muted">Already linked in your resume.</span>
+                        ) : bad ? (
+                          <span className="text-xs text-bad">That doesn&apos;t look like a web address.</span>
+                        ) : (
+                          word &&
+                          !value.trim() && (
+                            <span className="text-xs text-muted">
+                              Your resume says &quot;{word}&quot; here with no link behind it.
+                            </span>
+                          )
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
         </fieldset>
       )}
       {error && <p role="alert" className="text-sm text-bad">{error}</p>}
