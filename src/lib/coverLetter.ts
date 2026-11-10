@@ -51,9 +51,11 @@ const SYSTEM = `You are an experienced career coach who writes cover letters tha
 
 Honesty comes first. Use only facts from the person's resume, background, and education details. Never invent employers, titles, dates, degrees, certifications, numbers, achievements, or skills, and never claim a degree the person hasn't finished. If the job asks for something the person doesn't show, don't pretend; lean on related strengths and eagerness to learn instead. If a company name, hiring manager, or contact detail isn't in the materials, don't guess: use "Dear Hiring Manager" and leave out the name, or put a clear [placeholder] and mention it in the notes.
 
+Stay professional about what you include. The background notes can hold anything the person typed, including personal trivia, hobbies, food preferences, "fun facts", or icebreakers meant for other places. Leave all of that out unless it plainly helps for this specific job (for example, a hobby that is the product's domain). Never include a "fun fact", joke, or unrelated personal detail, and never open the letter with one, even if the notes or the earlier version contain one. Only add something like that if the person's extra instructions explicitly ask for it.
+
 Follow mainstream expert guidance:
 - One page, three to four short paragraphs, plain text, no headers or bullet lists.
-- Open with a specific hook tied to this role and company, such as something the person did that matches what the job is for. Never open with "I am writing to apply for...", "I am excited to...", or a line about the person's passion.
+- Start with a greeting line ("Dear Hiring Manager," unless a real name is in the materials), then an opening paragraph that properly introduces the person before any details: who they are professionally (their current or most recent role, or what they've been doing) and the specific role they're applying for, joined to a specific hook such as something they did that matches what the job is for. A reader should know who is writing and why after the first two sentences. Never open with "I am writing to apply for...", "I am excited to...", or a line about the person's passion.
 - In the middle, pick the two or three most relevant things from the person's background and tie each to a need in the posting, showing results where the materials give them. Don't just restate the resume.
 - Echo the posting's own wording where it truthfully describes the person.
 - Show you understand what the employer cares about, then close with confidence and a clear next step.
@@ -112,5 +114,27 @@ ${instructions?.trim() ? `\n<extra_instructions>\n${instructions.trim()}\n</extr
 Write a cover letter for this job. Tone: ${TONES[tone]}. Length: about ${LENGTH_WORDS[length]} words.`,
   input: CoverLetterRequestSchema,
   output: CoverLetterResultSchema,
-  clean: (result) => cleanAnswer(result),
+  clean: (result) => {
+    const cleaned = cleanAnswer(result);
+    return { ...cleaned, letter: withGreeting(withoutFunFacts(cleaned.letter)) };
+  },
 };
+
+/** A paragraph that is just personal trivia, like "Fun fact about me: ...". */
+const FUN_FACT = /^\s*(?:a\s+)?(?:fun|random|quick)\s+fact\b/i;
+
+/** Drops "fun fact" paragraphs, a safety net in case the model copies one from the notes. */
+export function withoutFunFacts(letter: string): string {
+  const paragraphs = letter.split(/\n\s*\n/);
+  const kept = paragraphs.filter((p) => !FUN_FACT.test(p));
+  return kept.length === paragraphs.length ? letter : kept.join("\n\n");
+}
+
+const GREETING = /^(dear|hello|hi|to whom|greetings)\b/i;
+
+/** Makes sure the letter opens with a greeting line, as the prompt asks. */
+export function withGreeting(letter: string): string {
+  const trimmed = letter.trimStart();
+  if (!trimmed || GREETING.test(trimmed)) return letter;
+  return `Dear Hiring Manager,\n\n${trimmed}`;
+}
