@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { friendlyMessage } from "@/lib/errors";
 import { isImage, parseJobPosting } from "@/lib/parseJobPosting";
+import { needsModel } from "@/lib/providers";
+import { useSettings } from "@/lib/useSettings";
 
 interface Props {
   text: string;
@@ -11,10 +13,13 @@ interface Props {
 
 /**
  * The job posting step: paste text, paste or drop a screenshot, or attach a
- * file. Screenshots are read with OCR in this browser; the extracted text goes
- * into the same box so it can be checked and fixed before tailoring.
+ * file. Screenshots are read by Claude when an API key is set, otherwise with
+ * free OCR in this browser; the extracted text goes into the same box so it
+ * can be checked and fixed before tailoring.
  */
 export function JobPostingInput({ text, onChange }: Props) {
+  const { settings, loaded } = useSettings();
+  const claudeReads = loaded && settings.provider === "claude" && !needsModel(settings);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState("");
@@ -26,12 +31,16 @@ export function JobPostingInput({ text, onChange }: Props) {
     setError("");
     setNote("");
     try {
-      const parsed = await parseJobPosting(file, setProgress);
-      onChange(text.trim() ? `${text.trim()}\n\n${parsed}` : parsed);
+      const parsed = await parseJobPosting(file, loaded ? settings : null, setProgress);
+      onChange(text.trim() ? `${text.trim()}\n\n${parsed.text}` : parsed.text);
       setNote(
-        isImage(file)
-          ? "Text read from your screenshot in this browser. Check it below for mistakes."
-          : `Text read from ${file.name}.`,
+        parsed.readBy === "claude"
+          ? "Text read from your screenshot by Claude. Give it a quick look before tailoring."
+          : parsed.readBy === "browser"
+            ? parsed.claudeError
+              ? `Claude couldn't read the screenshot, so it was read in this browser instead. Check it below for mistakes. (${parsed.claudeError.replace(/\.$/, "")})`
+              : "Text read from your screenshot in this browser. Check it below for mistakes. Adding a Claude API key makes screenshot reading much more accurate."
+            : `Text read from ${file.name}.`,
       );
     } catch (e) {
       setError(friendlyMessage(e));
@@ -92,7 +101,11 @@ export function JobPostingInput({ text, onChange }: Props) {
             }}
           />
         </label>
-        <span className="text-xs text-muted">Image, PDF, Word, or text file. Read in your browser.</span>
+        <span className="text-xs text-muted">
+          {claudeReads
+            ? "Image, PDF, Word, or text file. Screenshots are read by Claude with your key."
+            : "Image, PDF, Word, or text file. Read in your browser."}
+        </span>
       </div>
       {note && !error && <p className="text-xs text-muted">{note}</p>}
       {error && <p className="text-sm text-bad">{error}</p>}
