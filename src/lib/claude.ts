@@ -101,3 +101,59 @@ export async function runClaudeTask<Input, Output>(
     throw claudeError(error);
   }
 }
+
+const READ_SCREENSHOT_SYSTEM = `You copy the text of job postings out of screenshots, word for word.
+Copy only the job posting itself: the job title, company, location, pay, and the full description with every section and bullet.
+Leave out everything else on the screen, such as menus, buttons, ads, other job listings, cookie banners, and the phone's status bar.
+Keep the posting's order, headings, and paragraphs. Write each bullet point on its own line starting with "• ".
+Do not fix, summarize, reword, or add anything. If a word is cut off or unreadable, copy what is visible.
+Reply with the posting's text only, with no introduction or comments. If the images contain no job posting text, reply with exactly: NO_TEXT`;
+
+/**
+ * Reads a job posting screenshot with Claude, which is far more accurate than
+ * the free in-browser reader. Copying text is light work, so it runs on the
+ * quick model.
+ */
+export async function readScreenshotWithClaude(
+  settings: ModelSettings,
+  pieces: { mediaType: "image/png" | "image/jpeg"; data: string }[],
+): Promise<string> {
+  const model = modelFor(settings, "light");
+  if (!model) throw new FriendlyError("Pick a model in Model settings first.");
+
+  try {
+    const client = claudeClient(settings);
+    const intro =
+      pieces.length > 1
+        ? `These ${pieces.length} images are one tall screenshot cut into pieces, top to bottom. Copy the job posting from them as one text.`
+        : "Copy the job posting from this screenshot.";
+    const message = await client.messages.create({
+      model,
+      max_tokens: 16000,
+      output_config: { effort: "low" },
+      system: READ_SCREENSHOT_SYSTEM,
+      messages: [
+        {
+          role: "user",
+          content: [
+            ...pieces.map((piece) => ({
+              type: "image" as const,
+              source: { type: "base64" as const, media_type: piece.mediaType, data: piece.data },
+            })),
+            { type: "text" as const, text: intro },
+          ],
+        },
+      ],
+    });
+    if (message.stop_reason === "refusal") {
+      throw new FriendlyError("Claude declined to read that screenshot.");
+    }
+    const text = message.content
+      .flatMap((block) => (block.type === "text" ? [block.text] : []))
+      .join("")
+      .trim();
+    return text === "NO_TEXT" ? "" : text;
+  } catch (error) {
+    throw claudeError(error);
+  }
+}
