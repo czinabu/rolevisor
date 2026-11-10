@@ -48,13 +48,6 @@ export function parseResumeText(text: string): Block[] {
 const MARGIN_PT = 54; // 0.75 inch
 const PAGE = { w: 612, h: 792 }; // US Letter
 
-/** Safe file name stem, like "Jane-Doe-resume". */
-export function fileStem(text: string, suffix: string): string {
-  const first = text.split("\n").find((l) => l.trim() && !l.startsWith("#")) ?? "";
-  const name = first.replace(/[^\p{L}\p{N} ]/gu, "").trim().split(/\s+/).slice(0, 3).join("-");
-  return `${name || "my"}-${suffix}`;
-}
-
 export function saveBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

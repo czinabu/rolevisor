@@ -1,11 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { downloadStem, guessCompany } from "@/lib/companyName";
 import { LINK_FIELDS, normalizeUrl, useProfileLinks } from "@/lib/profileLinks";
 import { PROJECT_LINK_FIELDS, addProjectLinks, findProjects, linksFor, useProjectLinks } from "@/lib/projectLinks";
 import {
   TEMPLATES,
-  fileStem,
   makeLetterDocx,
   makeLetterPdf,
   makeResumeDocx,
@@ -14,9 +14,25 @@ import {
   type TemplateId,
 } from "@/lib/resumeDoc";
 
-/** Template picker and PDF / Word download buttons. Files are built in the browser. */
-export function DownloadPanel({ text, kind }: { text: string; kind: "resume" | "letter" }) {
+/**
+ * Template picker and PDF / Word download buttons. Files are built in the browser and named after
+ * the company in the job posting ("caleb-zinabu-acme.pdf", "cover-letter-acme.pdf"), which the
+ * person can correct.
+ */
+export function DownloadPanel({
+  text,
+  kind,
+  jobPosting = "",
+}: {
+  text: string;
+  kind: "resume" | "letter";
+  jobPosting?: string;
+}) {
   const [template, setTemplate] = useState<TemplateId>("classic");
+  // The guess from the posting, until the person types their own. A new posting brings a new guess.
+  const [typed, setTyped] = useState<{ posting: string; company: string } | null>(null);
+  const company = typed && typed.posting === jobPosting ? typed.company : guessCompany(jobPosting);
+  const stem = downloadStem(kind, text, company);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [links, setLinks] = useProfileLinks();
@@ -36,7 +52,6 @@ export function DownloadPanel({ text, kind }: { text: string; kind: "resume" | "
         kind === "resume"
           ? format === "pdf" ? makeResumePdf : makeResumeDocx
           : format === "pdf" ? makeLetterPdf : makeLetterDocx;
-      const stem = kind === "resume" ? fileStem(text, "resume") : "cover-letter";
       const body = kind === "resume" ? addProjectLinks(text, projectLinks) : text;
       saveBlob(await make(body, template, urls), `${stem}.${format}`);
     } catch {
@@ -63,6 +78,15 @@ export function DownloadPanel({ text, kind }: { text: string; kind: "resume" | "
             ))}
           </select>
         </label>
+        <label className="flex items-center gap-2 text-sm">
+          <span className="font-medium">Company</span>
+          <input
+            className="field !w-40"
+            placeholder="For the file name"
+            value={company}
+            onChange={(e) => setTyped({ posting: jobPosting, company: e.target.value })}
+          />
+        </label>
         <button className="btn" disabled={busy || !text.trim()} onClick={() => download("pdf")}>
           Download PDF
         </button>
@@ -71,7 +95,7 @@ export function DownloadPanel({ text, kind }: { text: string; kind: "resume" | "
         </button>
       </div>
       <p className="text-xs text-muted">
-        {TEMPLATES[template].note}. Single column, no tables or images, so applicant tracking
+        Saves as <span className="font-medium">{stem}</span>. {TEMPLATES[template].note}. Single column, no tables or images, so applicant tracking
         systems can read it. Built on your device; nothing is uploaded.
       </p>
       {kind === "resume" && (

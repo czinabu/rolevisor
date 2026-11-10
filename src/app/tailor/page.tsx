@@ -417,6 +417,7 @@ export default function TailorPage() {
               <TailorResults
                 result={tailored.result}
                 originalResume={tailored.resume}
+                jobPosting={inputs.jobPosting}
               />
               <div className="mt-8 card p-4 text-sm">
                 {logged ? (
@@ -565,7 +566,7 @@ export default function TailorPage() {
                 jobPosting={inputs.jobPosting}
                 background={inputs.background}
               />
-              <OriginalDownloadCard resume={inputs.resume} />
+              <OriginalDownloadCard resume={inputs.resume} jobPosting={inputs.jobPosting} />
             </div>
           ) : (
             <Empty>

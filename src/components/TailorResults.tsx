@@ -14,9 +14,12 @@ function scoreLabel(score: number) {
 export function TailorResults({
   result,
   originalResume,
+  jobPosting = "",
 }: {
   result: TailorResult;
   originalResume: string;
+  /** Used to name the download after the company. */
+  jobPosting?: string;
 }) {
   const [copied, setCopied] = useState(false);
   // Editable copy of the model's resume; resets when a new result arrives.
@@ -128,7 +131,7 @@ export function TailorResults({
           onChange={(e) => setEdited({ source: result.tailoredResume, text: e.target.value })}
         />
         <LinkPrompt resume={resumeText} advice={result.linkAdvice} />
-        <DownloadPanel text={resumeText} kind="resume" />
+        <DownloadPanel text={resumeText} kind="resume" jobPosting={jobPosting} />
       </section>
 
       {result.changes.length > 0 && (

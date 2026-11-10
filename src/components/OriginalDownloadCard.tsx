@@ -9,7 +9,7 @@ import { structureResume } from "@/lib/structureResume";
  * involved: the text is sorted into headings, entries, and bullets by plain rules, and the person can fix
  * anything in the box before downloading.
  */
-export function OriginalDownloadCard({ resume }: { resume: string }) {
+export function OriginalDownloadCard({ resume, jobPosting = "" }: { resume: string; jobPosting?: string }) {
   const structured = useMemo(() => structureResume(resume), [resume]);
   const [text, setText] = useState(structured);
   // Start over from the new resume when it changes.
@@ -49,7 +49,7 @@ export function OriginalDownloadCard({ resume }: { resume: string }) {
         )}
       </details>
 
-      <DownloadPanel text={text} kind="resume" />
+      <DownloadPanel text={text} kind="resume" jobPosting={jobPosting} />
     </section>
   );
 }

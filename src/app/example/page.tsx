@@ -103,7 +103,11 @@ export default function Example() {
         <Tabs tabs={TABS} value={tab} onChange={setTab} label="Example results" />
 
         <div role="tabpanel" id="panel-tailor" aria-labelledby="tab-tailor" hidden={tab !== "tailor"}>
-          <TailorResults result={EXAMPLE_TAILORED} originalResume={EXAMPLE_INPUTS.resume} />
+          <TailorResults
+            result={EXAMPLE_TAILORED}
+            originalResume={EXAMPLE_INPUTS.resume}
+            jobPosting={EXAMPLE_INPUTS.jobPosting}
+          />
         </div>
 
         <div role="tabpanel" id="panel-keywords" aria-labelledby="tab-keywords" hidden={tab !== "keywords"}>
@@ -151,7 +155,7 @@ export default function Example() {
             <h2 className="text-lg font-medium">Cover letter</h2>
             <p className="text-sm text-muted">Professional tone, standard length.</p>
             <SampleText text={EXAMPLE_LETTER.letter} />
-            <DownloadPanel text={EXAMPLE_LETTER.letter} kind="letter" />
+            <DownloadPanel text={EXAMPLE_LETTER.letter} kind="letter" jobPosting={EXAMPLE_INPUTS.jobPosting} />
             <ul className="list-disc space-y-1 pl-5 text-sm text-muted">
               {EXAMPLE_LETTER.notes.map((n, i) => (
                 <li key={i}>{n}</li>
