@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { DownloadPanel } from "@/components/DownloadPanel";
+import { BeforeAfter, TailoringChecks, backgroundText } from "@/components/KeywordMatchCard";
 import { LinkPrompt } from "@/components/LinkPrompt";
-import { hasKeyword, type TailorResult } from "@/lib/tailor";
+import { compareKeywords } from "@/lib/keywordMatch";
+import type { Background, TailorResult } from "@/lib/tailor";
 
 function scoreLabel(score: number) {
   if (score >= 75) return "Strong match";
@@ -15,24 +17,28 @@ export function TailorResults({
   result,
   originalResume,
   jobPosting = "",
+  background,
+  onEdit,
 }: {
   result: TailorResult;
   originalResume: string;
-  /** Used to name the download after the company. */
+  /** For the before and after keyword score, and to name the download after the company. */
   jobPosting?: string;
+  /** For spotting keywords tailoring added that nothing the person gave supports. */
+  background?: Background;
+  /** Called with the edited tailored resume, so other tabs can follow the edits. */
+  onEdit?: (text: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
   // Editable copy of the model's resume; resets when a new result arrives.
   const [edited, setEdited] = useState({ source: result.tailoredResume, text: result.tailoredResume });
   const resumeText = edited.source === result.tailoredResume ? edited.text : result.tailoredResume;
   const score = Math.max(0, Math.min(100, Math.round(result.matchScore)));
-  // Checked here rather than trusting the model, so the counts are exact.
-  const keywords = [...new Set(result.keywords.map((k) => k.trim()).filter(Boolean))].map(
-    (keyword) => ({
-      keyword,
-      before: hasKeyword(originalResume, keyword),
-      after: hasKeyword(result.tailoredResume, keyword),
-    }),
+  // The free keyword check on both versions, following the person's edits.
+  const notes = useMemo(() => backgroundText(background), [background]);
+  const change = useMemo(
+    () => compareKeywords(originalResume, resumeText, jobPosting, notes),
+    [originalResume, resumeText, jobPosting, notes],
   );
 
   async function copy() {
@@ -78,35 +84,21 @@ export function TailorResults({
         />
       </section>
 
-      {keywords.length > 0 && (
-        <section className="space-y-3">
-          <h2 className="text-lg font-medium">Job posting keywords</h2>
+      {change.before.score !== null && change.after.score !== null && (
+        <section className="space-y-4 card p-5">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h2 className="text-lg font-medium">Keyword match, before and after</h2>
+            <span className="rounded-full bg-good-soft px-2 py-0.5 text-xs font-medium text-good">
+              Free, no key needed
+            </span>
+          </div>
+          <BeforeAfter before={change.before.score} after={change.after.score} />
           <p className="text-sm text-muted">
-            Your original resume has {keywords.filter((k) => k.before).length} of {keywords.length}.
-            The tailored one has {keywords.filter((k) => k.after).length}. Keywords still missing
-            are ones your materials didn&apos;t support, so add them only if they&apos;re true.
+            The same free check as the Keyword match tab, run on both versions. It follows your
+            edits below. Keywords still missing are ones your materials didn&apos;t support, so add
+            them only if they&apos;re true.
           </p>
-          <ul className="flex flex-wrap gap-2">
-            {keywords.map((k) => (
-              <li
-                key={k.keyword}
-                title={
-                  k.before
-                    ? "Already in your resume"
-                    : k.after
-                      ? "Added in the tailored resume"
-                      : "Not in either resume"
-                }
-                className={`rounded-full border px-3 py-1 text-xs ${
-                  k.after ? "border-good/30 bg-good-soft text-good" : "border-line bg-card text-muted"
-                }`}
-              >
-                {k.after ? "✓ " : ""}
-                {k.keyword}
-                {!k.before && k.after ? " (added)" : ""}
-              </li>
-            ))}
-          </ul>
+          <TailoringChecks change={change} />
         </section>
       )}
 
@@ -128,7 +120,10 @@ export function TailorResults({
           className="field h-96 font-sans leading-relaxed"
           aria-label="Tailored resume"
           value={resumeText}
-          onChange={(e) => setEdited({ source: result.tailoredResume, text: e.target.value })}
+          onChange={(e) => {
+            setEdited({ source: result.tailoredResume, text: e.target.value });
+            onEdit?.(e.target.value);
+          }}
         />
         <LinkPrompt resume={resumeText} advice={result.linkAdvice} />
         <DownloadPanel text={resumeText} kind="resume" jobPosting={jobPosting} />

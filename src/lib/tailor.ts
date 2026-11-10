@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Task } from "./tasks";
+import { evidence, matchKeywords, type Evidence } from "./keywordMatch";
 import { WRITING_STYLE, cleanAnswer } from "./writingStyle";
 
 export const EDUCATION_STATUSES = {
@@ -43,6 +44,18 @@ export const TailorRequestSchema = z.object({
 });
 export type TailorRequest = z.infer<typeof TailorRequestSchema>;
 
+/** The background notes as one block of text, for spotting keywords that aren't on the resume yet. */
+export function backgroundText(background?: Background): string {
+  if (!background) return "";
+  return [
+    background.skills,
+    background.notes,
+    ...(background.education ?? []).flatMap((e) => [e.program, e.coursework]),
+  ]
+    .filter((t) => t?.trim())
+    .join("\n");
+}
+
 export const LINK_ADVICE = ["Recommended", "Optional", "Not needed"] as const;
 export type LinkAdvice = (typeof LINK_ADVICE)[number];
 
@@ -61,11 +74,6 @@ export const TailorResultSchema = z.object({
     .array(z.string())
     .describe(
       "Skills and requirements from the job posting that the resume and background don't show.",
-    ),
-  keywords: z
-    .array(z.string())
-    .describe(
-      "The 10 to 20 most important words or short phrases an applicant tracking system would scan for, copied exactly as the job posting writes them.",
     ),
   tailoredResume: z
     .string()
@@ -136,7 +144,9 @@ Honesty comes first. Everything in the tailored resume must be supported by the 
 
 If a metric would help but isn't given, don't make one up. Keep the person's contact details and keep the resume about the same length or shorter.
 
-When you list missing skills, only include requirements the job actually asks for that the person's materials don't show. The match score rates the original resume, not your rewrite. List keywords whether or not the person has them; Rolevisor checks which ones each resume contains.
+When you list missing skills, only include requirements the job actually asks for that the person's materials don't show. The match score rates the original resume, not your rewrite.
+
+Keywords: Rolevisor scores both resumes against the posting's exact words, the way an applicant tracking system does, and gives you the posting's keywords the original resume lacks, sorted by what backs them up. Use the posting's exact wording for a keyword when the person's materials support it: work in the ones from their background notes, and reword with the posting's term where the resume already describes the same thing in other words. Never add a keyword the materials don't support, and don't repeat a keyword to raise the score; once or twice in the resume is enough.
 
 Education advice: decide whether and how the person should show their education for this specific job, using the education details they gave and what's on their resume. Follow the same choice in the tailored resume. Guidelines:
 - If the job requires or strongly prefers a degree the person hasn't finished, be honest: never list an unfinished degree as earned. Show the time spent and what was learned instead, for example "Coursework toward B.S. Computer Science, State University, 2021–2023" or "Completed 90 credits toward B.A. Economics".
@@ -178,6 +188,13 @@ function userPrompt({ resume, background, jobPosting }: TailorRequest): string {
         .join("\n"),
     );
 
+  const missing = matchKeywords(resume, jobPosting, backgroundText(background)).missing;
+  const gaps = (e: Evidence) =>
+    missing
+      .filter((k) => evidence(k) === e)
+      .map((k) => (e === "related" ? `${k.keyword} (the resume says: ${k.related.join(", ")})` : k.keyword))
+      .join("; ") || "(none)";
+
   return `<resume>
 ${resume.trim()}
 </resume>
@@ -194,6 +211,12 @@ ${education.length ? education.join("\n") : "(none given beyond the resume)"}
 ${jobPosting.trim()}
 </job_posting>
 
+<missing_keywords>
+In the background notes, so add them where they fit: ${gaps("background")}
+Close to something the resume already says, so use the posting's wording only if it describes the same thing: ${gaps("related")}
+Not supported by anything the person gave, so leave them out: ${gaps("none")}
+</missing_keywords>
+
 Tailor this resume for the job posting above.`;
 }
 
@@ -205,8 +228,7 @@ export const tailorTask: Task<TailorRequest, TailorResult> = {
   user: userPrompt,
   input: TailorRequestSchema,
   output: TailorResultSchema,
-  // Keywords are copied from the posting and must match it exactly.
-  clean: (result) => cleanAnswer(result, { keep: ["keywords"], resume: ["tailoredResume"] }),
+  clean: (result) => cleanAnswer(result, { resume: ["tailoredResume"] }),
 };
 
 // The keyword check lives with the rest of the keyword matching; kept here for existing imports.

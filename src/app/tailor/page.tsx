@@ -90,6 +90,13 @@ export default function TailorPage() {
   const [tab, setTab] = useState<TabId>("tailor");
   const request = useRequest<Tailored>();
   const { busy: tailoring, error: tailorError, data: tailored } = request;
+  // The person's edits to the tailored resume, so the Keyword match tab scores what they'll send.
+  const [edits, setEdits] = useState<{ source: TailorResult; text: string } | null>(null);
+  const tailoredText = tailored
+    ? edits?.source === tailored.result
+      ? edits.text
+      : tailored.result.tailoredResume
+    : undefined;
   // Measured from the uploaded file. Kept in storage so it survives switching pages.
   const [stored, setStored] = useStoredState<{ layout: ResumeLayout | null }>("job-helper:layout", { layout: null });
   const layout = stored.layout;
@@ -411,6 +418,8 @@ export default function TailorPage() {
                 result={tailored.result}
                 originalResume={tailored.resume}
                 jobPosting={inputs.jobPosting}
+                background={inputs.background}
+                onEdit={(text) => setEdits({ source: tailored.result, text })}
               />
               <div className="mt-8 card p-4 text-sm">
                 {log.step === "saved" ? (
@@ -508,6 +517,8 @@ export default function TailorPage() {
               resume={inputs.resume}
               jobPosting={inputs.jobPosting}
               background={inputs.background}
+              // Before and after, as long as the resume is still the one that was tailored.
+              tailoredResume={tailored?.resume === inputs.resume ? tailoredText : undefined}
             />
           ) : (
             <Empty>
