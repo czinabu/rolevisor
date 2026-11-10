@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { runTask } from "@/lib/ai";
 import { addApplication, newApplication } from "@/lib/applications";
-import { friendlyMessage } from "@/lib/errors";
+import { useRequest } from "@/lib/useRequest";
 import { searchLinks, type RecommendResult } from "@/lib/recommend";
 import { needsModel, PROVIDERS } from "@/lib/providers";
 import { KeyBadge, NoModel } from "@/components/FreeLabel";
@@ -26,36 +26,25 @@ export default function RoleFinderPage() {
   // The same saved resume and "About you" details the home page uses.
   const [inputs, , loaded] = useStoredState<TailorRequest>("job-helper:inputs", EMPTY);
   const [location, setLocation] = useStoredState("job-helper:location", { value: "" });
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [result, setResult] = useState<RecommendResult | null>(null);
+  const request = useRequest<RecommendResult>();
+  const { busy, error, data: result } = request;
   const [saved, setSaved] = useState<Set<string>>(new Set());
 
-  async function find() {
-    setBusy(true);
-    setError("");
-    setResult(null);
-    try {
-      setResult(
-        await runTask<RecommendResult>(settings, "recommend", {
-          resume: inputs.resume,
-          background: inputs.background,
-          location: location.value,
-        }),
-      );
-    } catch (e) {
-      setError(friendlyMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  }
+  const find = () =>
+    request.run(() =>
+      runTask<RecommendResult>(settings, "recommend", {
+        resume: inputs.resume,
+        background: inputs.background,
+        location: location.value,
+      }),
+    );
 
   function saveToLog(title: string) {
     try {
       addApplication(newApplication({ role: title, status: "applied", notes: "Saved from Role finder." }));
       setSaved(new Set(saved).add(title));
     } catch {
-      setError("Couldn't save to the log. Browser storage may be blocked.");
+      request.fail("Couldn't save to the log. Browser storage may be blocked.");
     }
   }
 

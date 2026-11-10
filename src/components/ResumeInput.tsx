@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { friendlyMessage } from "@/lib/errors";
+import { useRequest } from "@/lib/useRequest";
 import { readLayout, type ResumeLayout } from "@/lib/layout";
 import { openPdf, parseResume, resumeFileKind } from "@/lib/parseResume";
 import { fillLinksFromFile } from "@/lib/profileLinks";
@@ -24,8 +24,8 @@ export function ResumeInput({ text, onChange, onLayout }: Props) {
     fileName: "",
   });
   const [file, setFile] = useState<File | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const reading = useRequest<void>();
+  const { busy, error } = reading;
   const [showText, setShowText] = useState(false);
   const [pasting, setPasting] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -58,10 +58,8 @@ export function ResumeInput({ text, onChange, onLayout }: Props) {
     };
   }, [file, isPdf]);
 
-  async function upload(chosen: File) {
-    setBusy(true);
-    setError("");
-    try {
+  const upload = (chosen: File) =>
+    reading.run(async () => {
       const parsed = await parseResume(chosen);
       onLayout(await readLayout(chosen));
       await fillLinksFromFile(chosen, parsed);
@@ -70,12 +68,7 @@ export function ResumeInput({ text, onChange, onLayout }: Props) {
       setPasting(false);
       setShowText(false);
       onChange(parsed);
-    } catch (e) {
-      setError(friendlyMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  }
+    });
 
   function remove() {
     setFile(null);

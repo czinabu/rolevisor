@@ -17,12 +17,13 @@ import {
 import { testConnection } from "@/lib/ai";
 import { COMPUTER_TYPES } from "@/lib/localModels";
 import { useStoredState } from "@/lib/useStoredState";
+import { useRequest } from "@/lib/useRequest";
 import { useSettings } from "@/lib/useSettings";
 
 export default function SettingsPage() {
   const { settings, setSettings, remember, setRemember, clearKey } = useSettings();
-  const [testing, setTesting] = useState(false);
-  const [result, setResult] = useState<TestConnectionResult | null>(null);
+  const test = useRequest<TestConnectionResult>();
+  const { busy: testing, data: result } = test;
   const info = PROVIDERS[settings.provider];
   // The key is masked with CSS on a plain text input instead of type="password".
   // A filled password field makes browsers offer "Save password?" whenever you
@@ -36,15 +37,12 @@ export default function SettingsPage() {
 
   function chooseProvider(provider: ProviderId) {
     setSettings(defaultSettings(provider));
-    setResult(null);
+    test.reset();
   }
 
-  async function handleTest() {
-    setTesting(true);
-    setResult(null);
-    try {
+  const handleTest = () =>
+    test.run(async () => {
       const data = await testConnection(settings);
-      setResult(data);
       // Pick models automatically if the chosen ones aren't available.
       if (data.ok) {
         const pick = (current: string) =>
@@ -55,10 +53,8 @@ export default function SettingsPage() {
           quickModel: info.isLocal ? "" : pick(settings.quickModel),
         });
       }
-    } finally {
-      setTesting(false);
-    }
-  }
+      return data;
+    });
 
   return (
     <div className="space-y-8">

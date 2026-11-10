@@ -67,6 +67,7 @@ No environment variables are needed. Claude requests always use the API key ente
 How it fits together:
 
 - `src/lib/tasks.ts`: every AI request is a *task* with a prompt, input and output schemas, and a weight (`heavy` or `light`). Features register their task in `TASKS`.
+- `src/lib/request.ts` and `src/lib/useRequest.ts`: every "ask and wait" action (tailoring, reviews, cover letters, file reading, downloads, the connection test) is one state machine: `idle`, `running`, `done`, or `failed`. Use `useRequest()` instead of separate busy, error, and result flags.
 - `src/lib/ai.ts`: what the UI calls. Runs a task on the picked model.
 - `src/lib/local.ts`: runs tasks on LM Studio or Ollama **from the browser**, so the hosted site can use a visitor's local model.
 - `src/lib/claude.ts`: runs tasks on Claude **from the browser** (there are no server API routes). `src/lib/apiKey.ts` and `src/lib/useSettings.ts` keep the key out of the saved settings. Heavy tasks use the main model, light ones the quick model.
