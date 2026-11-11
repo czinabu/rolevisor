@@ -62,7 +62,11 @@ function titleCase(heading: string): string {
 }
 
 export function structureResume(text: string): string {
-  const lines = text.replace(/\r\n?/g, "\n").split("\n").map((l) => l.replace(/\s+$/, ""));
+  const lines = text
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    // A line that is all bold ("**Experience**") is read as if it weren't, so a bold heading still counts.
+    .map((l) => l.replace(/\s+$/, "").replace(/^(\s*)(?:\*\*|__)([^*_]+?)(?:\*\*|__)(:?)$/, "$1$2$3"));
   if (alreadyStructured(lines)) return text.trim();
 
   const out: string[] = [];

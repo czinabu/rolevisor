@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Task } from "./tasks";
 import { evidence, matchKeywords, type Evidence } from "./keywordMatch";
+import { structureResume } from "./structureResume";
 import { WRITING_STYLE, cleanAnswer } from "./writingStyle";
 
 export const EDUCATION_STATUSES = {
@@ -162,6 +163,8 @@ Profile links: say whether LinkedIn and GitHub links would help for this job. Li
 - don't add those words when the original doesn't have them.
 Project links work the same way: Rolevisor asks for each project's live demo and code addresses and links them when the resume is downloaded. Keep words like "Live demo" or "GitHub repo" next to a project if the original has them, keep each project's name as the original writes it, and never write or guess a project URL.
 
+Format the tailored resume as plain text the download templates can read: the person's name on the first line, then their contact details, then each section starting with a '## ' heading line (for example "## Professional Summary", "## Experience"). Each job or project gets one line like "Company - Role | June 2026 - Present", with its bullets below it starting with '- '. Don't use bold, italics, or tables.
+
 The tailored resume follows the writing style below too: start bullets with plain, specific action verbs (led, built, cut, trained, ran) instead of buzzwords, and keep the summary to concrete facts about the person rather than adjectives like "dynamic" or "results-driven". Keep the original resume's own wording where it's already good. For dates, use the same style as the original resume.
 
 ${WRITING_STYLE}`;
@@ -228,7 +231,11 @@ export const tailorTask: Task<TailorRequest, TailorResult> = {
   user: userPrompt,
   input: TailorRequestSchema,
   output: TailorResultSchema,
-  clean: (result) => cleanAnswer(result, { resume: ["tailoredResume"] }),
+  clean: (result) => {
+    const cleaned = cleanAnswer(result, { resume: ["tailoredResume"] });
+    // The model sometimes drops the '## ' from its headings; put them back so the templates and project links work.
+    return { ...cleaned, tailoredResume: structureResume(cleaned.tailoredResume) };
+  },
 };
 
 // The keyword check lives with the rest of the keyword matching; kept here for existing imports.
