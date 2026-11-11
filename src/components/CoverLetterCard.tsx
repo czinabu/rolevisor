@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DownloadPanel } from "@/components/DownloadPanel";
 import { Loading } from "@/components/Loading";
 import { runTask } from "@/lib/ai";
@@ -22,11 +22,14 @@ export function CoverLetterCard({
   background,
   jobPosting,
   settings,
+  onLetterChange,
 }: {
   resume: string;
   background: Background;
   jobPosting: string;
   settings: ModelSettings;
+  /** Hears every new or edited version, so the page can save it with the application. */
+  onLetterChange?: (letter: string) => void;
 }) {
   const [tone, setTone] = useState<Tone>("professional");
   const [length, setLength] = useState<Length>("standard");
@@ -37,6 +40,7 @@ export function CoverLetterCard({
   const request = useRequest<CoverLetterResult>();
   const { busy, error } = request;
   const [copied, setCopied] = useState(false);
+  useEffect(() => onLetterChange?.(letter), [letter, onLetterChange]);
 
   const ready = resume.trim() && jobPosting.trim();
 
