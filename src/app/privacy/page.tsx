@@ -47,6 +47,15 @@ export default function PrivacyPage() {
         </li>
       </ul>
 
+      <h2>Job posting links</h2>
+      <p>
+        When you paste a link to a job posting, your browser sends just that link to the Rolevisor
+        server, which opens the page, pulls out the posting&rsquo;s text, and sends it back. Your
+        resume, your API key, and your other details are never sent with it, and the server
+        doesn&rsquo;t save the link or the page. This works the same whether you use Claude, a local
+        model, or no model.
+      </p>
+
       {/* Update this section if analytics or other third-party services are added. */}
       <h2>Analytics and cookies</h2>
       <p>

@@ -15,7 +15,9 @@ You can use it with:
 2. Click **Model settings** at the top right and pick where the AI runs:
    - **Claude:** paste an API key from [console.anthropic.com](https://console.anthropic.com) (everyone uses their own key, billed to their own Anthropic account), then click **Test connection**. New to API keys? The site has a step-by-step guide at [/guide/api-key](https://rolevisor.vercel.app/guide/api-key), with rough costs (tailoring one resume is about 1 to 3 cents on the default models).
    - **LM Studio or Ollama:** follow the [local model setup guide](docs/local-models.md) first, then click **Test connection**.
-3. Open **Tailor**, add your resume and the job posting, and click **Tailor my resume**. You get a rewritten resume, an AI fit score, the skills you have and are missing, which of the posting's keywords each version contains, and a list of what changed and why.
+3. Open **Tailor**, add your resume and the job posting, and click **Get everything**. You can paste a link to the posting (Greenhouse, Lever, Ashby, LinkedIn, and most company career pages work) and Rolevisor reads the page for you. The page is read by the Rolevisor server, not by the model, so links work the same with Claude, LM Studio, Ollama, or no model at all; only the link is sent, never your resume. Indeed, Glassdoor, and some LinkedIn pages block this, so paste the text or a screenshot for those.
+   **Get everything** makes the tailored resume, a cover letter, and suggestions in one go, then shows a summary with the keyword score before and after, the advice worth doing first, and one zip with the resume and cover letter as PDF and Word, named after the company. With Claude the three run at the same time; a local model does them one after another, so it takes longer. Untick "Also write the cover letter and advice" to only tailor the resume.
+   Tailoring alone gives you a rewritten resume, an AI fit score, the skills you have and are missing, which of the posting's keywords each version contains, and a list of what changed and why.
    The **Keyword match** tab works without any API key or model. It pulls the skills, tools, and credentials the posting names, weighs them by section (requirements count most, nice-to-haves less, the company blurb and benefits not at all), and shows which ones your resume has, like an applicant tracking system would.
    The **Formatting** tab works without a key or model: it checks length, sections, bullets, contact details, and whether your dates use one style, and with a job posting it says whether LinkedIn and GitHub links would help.
 4. Want your own resume in a cleaner layout? On the **Formatting** tab, **Download your resume in a clean template** turns the resume you added into the Classic or Modern PDF or Word file, word for word. It runs entirely in your browser and needs no API key or model.
@@ -28,6 +30,7 @@ If something isn't set up right, Test connection tells you what to fix in plain 
 - Your resume, background, and settings are saved only in your own browser.
 - Resume files are read inside your browser. They're never uploaded.
 - With LM Studio or Ollama, your browser talks straight to the model on your computer. Your resume is never sent over the internet.
+- A pasted job link is read by the Rolevisor server. Only the link goes there, and nothing is saved.
 - With Claude, your browser sends your resume and API key straight to Anthropic's API. They never pass through the Rolevisor server, which stores and logs nothing. The key is kept for the current tab only unless you tick "Remember my key on this device", and "Clear my key" removes it. A Content-Security-Policy (in `next.config.ts`) limits where the page can send data.
 
 ## How Claude models are used

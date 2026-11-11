@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRequest } from "@/lib/useRequest";
 import { isImage, parseJobPosting } from "@/lib/parseJobPosting";
+import { isJustALink } from "@/lib/jobLink";
+import { readJobLink } from "@/lib/readJobLink";
 import { needsModel } from "@/lib/providers";
 import { useSettings } from "@/lib/useSettings";
 
@@ -12,8 +14,9 @@ interface Props {
 }
 
 /**
- * The job posting step: paste text, paste or drop a screenshot, or attach a
- * file. Screenshots are read by Claude when an API key is set, otherwise with
+ * The job posting step: paste a link, paste text, paste or drop a screenshot, or attach a
+ * file. Links are read by the Rolevisor server, not the model, so they work with every
+ * provider and with no model at all. Screenshots are read by Claude when an API key is set, otherwise with
  * free OCR in this browser; the extracted text goes into the same box so it
  * can be checked and fixed before tailoring.
  */
@@ -25,6 +28,23 @@ export function JobPostingInput({ text, onChange }: Props) {
   const { busy, error } = reading;
   const note = reading.data ?? "";
   const [progress, setProgress] = useState<number | null>(null);
+  const [link, setLink] = useState("");
+  const [readingLink, setReadingLink] = useState(false);
+
+  // A link replaces whatever was in the box: a new link is a new job.
+  const readLink = (url: string) =>
+    reading.run(async () => {
+      setReadingLink(true);
+      try {
+        const page = await readJobLink(url);
+        onChange(page.text);
+        setLink("");
+        const what = [page.title, page.company && `at ${page.company}`].filter(Boolean).join(" ");
+        return `Read ${what || "the posting"} from ${page.site}. Give it a quick look: menus or other jobs from the page can sneak in.`;
+      } finally {
+        setReadingLink(false);
+      }
+    });
 
   const read = (file: File) =>
     reading.run(async () => {
@@ -56,12 +76,53 @@ export function JobPostingInput({ text, onChange }: Props) {
         }
       }}
     >
+      <form
+        className="flex flex-col gap-2 sm:flex-row"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (link.trim() && !busy) readLink(link.trim());
+        }}
+      >
+        <input
+          className="field flex-1"
+          type="url"
+          inputMode="url"
+          aria-label="Job posting link"
+          placeholder="Paste a link to the job, e.g. from Greenhouse, Lever, LinkedIn, or a careers page"
+          value={link}
+          disabled={busy}
+          onChange={(e) => setLink(e.target.value)}
+          onPaste={(e) => {
+            const pasted = e.clipboardData.getData("text");
+            if (isJustALink(pasted) && !busy) {
+              e.preventDefault();
+              setLink(pasted.trim());
+              readLink(pasted.trim());
+            }
+          }}
+        />
+        <button className="btn-secondary shrink-0" disabled={busy || !link.trim()}>
+          {readingLink ? "Reading the page..." : "Read posting"}
+        </button>
+      </form>
+      <p className="text-xs text-muted">
+        Or paste the posting&apos;s text below. Indeed, Glassdoor, and some LinkedIn pages block automatic
+        reading, so for those, paste the text or a screenshot.
+      </p>
       <textarea
         className="field h-48"
         value={text}
         disabled={busy}
         onChange={(e) => onChange(e.target.value)}
         onPaste={(e) => {
+          // A link pasted into the empty box is read instead of left as a bare link.
+          const pasted = e.clipboardData.getData("text");
+          if (!text.trim() && isJustALink(pasted)) {
+            e.preventDefault();
+            setLink(pasted.trim());
+            readLink(pasted.trim());
+            return;
+          }
           // Some browsers leave `files` empty for a pasted screenshot but still list it in `items`.
           const image =
             Array.from(e.clipboardData.files).find(isImage) ??

@@ -31,6 +31,8 @@ import {
 import { useSettings } from "@/lib/useSettings";
 import { useStoredState } from "@/lib/useStoredState";
 import { addApplication, newApplication } from "@/lib/applications";
+import { ApplicationKitCard } from "@/components/ApplicationKitCard";
+import { KIT_STEPS, makeApplicationKit, type ApplicationKit, type KitStep } from "@/lib/applicationKit";
 
 type Inputs = TailorRequest;
 
@@ -40,10 +42,14 @@ type LogStep =
   | { step: "form"; company: string; role: string }
   | { step: "saved" };
 
-interface Tailored {
+interface Tailored extends Partial<Omit<ApplicationKit, "result">> {
   result: TailorResult;
   /** The resume this result was made from, for the keyword check. */
   resume: string;
+  /** Made with "Get everything": the cover letter and suggestions came too. */
+  everything: boolean;
+  /** Counts runs, so the cover letter and suggestions tabs load each new one. */
+  run: number;
 }
 
 const EMPTY: Inputs = {
@@ -103,6 +109,17 @@ export default function TailorPage() {
   const setLayout = (layout: ResumeLayout | null) => setStored({ layout });
   // Saving this job to the application log: offered, then a short form, then saved.
   const [log, setLog] = useState<LogStep>({ step: "offer" });
+  // "Get everything": the cover letter and suggestions come with the tailored resume.
+  const [kitPref, setKitPref] = useStoredState<{ everything: boolean }>("job-helper:everything", { everything: true });
+  const everything = kitPref.everything;
+  const [kitStep, setKitStep] = useState<{ step: KitStep; index: number } | null>(null);
+  // The person's edits to the cover letter, so the downloads use them.
+  const [letterEdits, setLetterEdits] = useState<{ run: number; text: string } | null>(null);
+  const letterText = tailored
+    ? letterEdits?.run === tailored.run
+      ? letterEdits.text
+      : (tailored.letter?.letter ?? "")
+    : "";
 
   const setBackground = (patch: Partial<Background>) =>
     setInputs({ ...inputs, background: { ...inputs.background, ...patch } });
@@ -129,14 +146,27 @@ export default function TailorPage() {
     // With no model, the button shows the free results instead of failing.
     if (noModel) {
       request.dismiss();
-      showResults("format");
+      showResults(inputs.jobPosting.trim() ? "keywords" : "format");
       return;
     }
     setLog({ step: "offer" });
-    const done = await request.run(async () => ({
-      result: await runTask<TailorResult>(settings, "tailor", inputs),
-      resume: inputs.resume,
-    }));
+    const run = (tailored?.run ?? 0) + 1;
+    const done = await request.run(async () => {
+      try {
+        if (!everything) {
+          return {
+            result: await runTask<TailorResult>(settings, "tailor", inputs),
+            resume: inputs.resume,
+            everything: false,
+            run,
+          };
+        }
+        const kit = await makeApplicationKit(settings, inputs, (step, index) => setKitStep({ step, index }));
+        return { ...kit, resume: inputs.resume, everything: true, run };
+      } finally {
+        setKitStep(null);
+      }
+    });
     if (done) showResults("tailor");
   }
 
@@ -156,7 +186,8 @@ export default function TailorPage() {
       <div className="space-y-4">
         <PageHeader title="Tailor your resume to a job">
           <p>
-            Two steps: add your details, then see your results. Everything stays
+            Two steps: add your details, then see your results. Paste a job link and one click
+            gets you the tailored resume, cover letter, keyword score, and advice. Everything stays
             in this browser until you ask for help.
           </p>
         </PageHeader>
@@ -353,11 +384,24 @@ export default function TailorPage() {
             onClick={tailor}
           >
             {tailoring
-              ? "Tailoring..."
+              ? everything ? "Working on it..." : "Tailoring..."
               : noModel
                 ? "Check my resume for free"
-                : "Tailor my resume"}
+                : everything
+                  ? "Get everything"
+                  : "Tailor my resume"}
           </button>
+          {!noModel && (
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={everything}
+                disabled={tailoring}
+                onChange={(e) => setKitPref({ everything: e.target.checked })}
+              />
+              Also write the cover letter and advice
+            </label>
+          )}
           {!canRun && !tailoring && (
             <span className="text-sm text-muted">
               {noModel
@@ -378,10 +422,18 @@ export default function TailorPage() {
 
         {tailoring && (
           <Loading
-            message="Tailoring your resume..."
+            message={
+              !everything
+                ? "Tailoring your resume..."
+                : PROVIDERS[settings.provider].isLocal && kitStep
+                  ? `${KIT_STEPS[kitStep.step]} (step ${kitStep.index + 1} of 3)...`
+                  : "Tailoring your resume, writing your cover letter, and finding what to improve..."
+            }
             hint={
               PROVIDERS[settings.provider].isLocal
-                ? "This can take a few minutes on a local model."
+                ? everything
+                  ? "Your local model does one piece at a time, so this can take several minutes."
+                  : "This can take a few minutes on a local model."
                 : "This usually takes under a minute."
             }
           />
@@ -404,6 +456,17 @@ export default function TailorPage() {
           </span>
           See your results
         </h2>
+        {tailored?.everything && (
+          <ApplicationKitCard
+            kit={{ ...tailored, problems: tailored.problems ?? [] }}
+            resume={tailoredText ?? tailored.result.tailoredResume}
+            letter={letterText}
+            originalResume={tailored.resume}
+            jobPosting={inputs.jobPosting}
+            background={inputs.background}
+            onOpen={setTab}
+          />
+        )}
         <Tabs tabs={tabs} value={tab} onChange={setTab} label="Results" />
 
         <div
@@ -538,6 +601,8 @@ export default function TailorPage() {
             <NoModel feature="Written suggestions" />
           ) : ready ? (
             <SuggestionsCard
+              key={tailored?.everything ? tailored.run : 0}
+              initial={tailored?.suggestions}
               resume={inputs.resume}
               background={inputs.background}
               jobPosting={inputs.jobPosting}
@@ -591,6 +656,9 @@ export default function TailorPage() {
             <NoModel feature="Writing a cover letter" />
           ) : ready ? (
             <CoverLetterCard
+              key={tailored?.everything ? tailored.run : 0}
+              initial={tailored?.letter}
+              onLetter={(text) => tailored && setLetterEdits({ run: tailored.run, text })}
               resume={inputs.resume}
               background={inputs.background}
               jobPosting={inputs.jobPosting}

@@ -28,14 +28,18 @@ export function SuggestionsCard({
   background,
   jobPosting,
   settings,
+  initial,
 }: {
   resume: string;
   background: Background;
   jobPosting: string;
   settings: ModelSettings;
+  /** Suggestions already made, e.g. by "Get everything". */
+  initial?: SuggestionsResult;
 }) {
   const request = useRequest<SuggestionsResult>();
-  const { busy, error, data: result } = request;
+  const { busy, error } = request;
+  const result = request.data ?? initial ?? null;
 
   // A refresh keeps the current suggestions on screen until the new ones arrive.
   const run = () =>
