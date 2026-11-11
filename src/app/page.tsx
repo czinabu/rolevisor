@@ -42,7 +42,7 @@ const FEATURES = [
   {
     free: true,
     title: "Application log",
-    body: "Keep track of where you applied and which version of your resume you sent, all saved in your own browser.",
+    body: "Keep track of where you applied, the resume and cover letter you sent, and when to follow up, all saved in your own browser.",
   },
 ];
 
