@@ -5,6 +5,8 @@
 //   node scripts/take-screenshots.mjs       # in another
 //
 // Uses the built-in example page and a made-up application log, so no API key is needed.
+// The desktop viewport is 800px wide, just wider than the page's content column, so the
+// images have no empty margins and stay readable at the README's width.
 // Set BASE_URL to shoot a different server (for example a Vercel preview).
 import { chromium } from 'playwright';
 const B = process.env.BASE_URL || 'http://localhost:3000';
@@ -22,7 +24,7 @@ const apps = [
     await ctx.addInitScript(([a, t]) => { localStorage.setItem('job-helper:applications', a); localStorage.setItem('job-helper:theme', t); }, [JSON.stringify(apps), theme]);
     return ctx.newPage();
   }
-  const desk = { viewport: { width: 1280, height: 860 }, deviceScaleFactor: 2 };
+  const desk = { viewport: { width: 800, height: 900 }, deviceScaleFactor: 2 };
   const phone = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true };
   const shot = async (p, name, full=false) => { await p.waitForTimeout(700); await p.screenshot({ path: `${OUT}/${name}.png`, fullPage: full }); };
   let p = await page(desk, 'light');
@@ -34,7 +36,7 @@ const apps = [
     const tl = p.getByRole('tab', { name: label }).or(p.getByRole('button', { name: label, exact: true })).first();
     const b = await tl.boundingBox(); const sy = await p.evaluate(() => window.scrollY);
     await p.waitForTimeout(500);
-    await p.screenshot({ path: `${OUT}/${name}.png`, fullPage: true, clip: { x: 0, y: b.y + sy - 30, width: 1280, height: 860 } });
+    await p.screenshot({ path: `${OUT}/${name}.png`, fullPage: true, clip: { x: 0, y: b.y + sy - 24, width: 800, height: 900 } });
   }
   await p.goto(B + '/tailor'); await shot(p, 'tailor');
   await p.goto(B + '/applications'); await shot(p, 'application-log');
