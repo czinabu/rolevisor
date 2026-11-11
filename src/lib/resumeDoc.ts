@@ -1,4 +1,5 @@
 import JSZip from "jszip";
+import { structureResume } from "./structureResume";
 
 /**
  * Builds PDF and Word files from the plain-text resume ('## ' headings, '- ' bullets) in the
@@ -45,6 +46,14 @@ export function parseResumeText(text: string): Block[] {
   return blocks;
 }
 
+/**
+ * The resume text in the structure the templates read. A model sometimes writes its section headings as plain
+ * lines ("Professional Summary") or in bold ("**Experience**") instead of '## ' headings. Without this every line
+ * above the first bullet would be read as contact details, so the whole resume came out as small, unstyled text.
+ * Text that already has '## ' headings is left as it is.
+ */
+export const resumeForTemplate = structureResume;
+
 const MARGIN_PT = 54; // 0.75 inch
 const PAGE = { w: 612, h: 792 }; // US Letter
 
@@ -72,6 +81,25 @@ export function parseEntryLine(text: string): { company: string; role: string; d
   const left = text.slice(0, i).trim();
   const m = /^(.+?)\s+[-–—]\s+(.+)$/.exec(left);
   return { company: m ? m[1] : left, role: m ? m[2] : "", dates };
+}
+
+/**
+ * The header of an entry: a dated line ("Company - Role | Dates"), or a short line with no dates right above
+ * bullets, such as a project ("Rolevisor | AI job search tool | GitHub | Live demo"). A project's name is the part
+ * before the first separator, so it gets the same bold name as a company.
+ */
+export function entryAt(blocks: Block[], i: number): { company: string; role: string; dates: string } | null {
+  const b = blocks[i];
+  if (b?.kind !== "text") return null;
+  const dated = parseEntryLine(b.text);
+  if (dated) return dated;
+  const line = shownText(b.text);
+  if (blocks[i + 1]?.kind !== "bullet" || line.length > 140 || /[.!?:;,]$/.test(line)) return null;
+  const sep = /\s+[|–—-]\s+/.exec(b.text);
+  if (!sep) return line.length <= 60 ? { company: b.text, role: "", dates: "" } : null;
+  const company = b.text.slice(0, sep.index).trim();
+  if (!company || /\]\(/.test(company) !== /\[/.test(company) || company.split(/\s+/).length > 8) return null;
+  return { company, role: b.text.slice(sep.index + sep[0].length).trim(), dates: "" };
 }
 
 /** Full URLs for the person's profile links; an empty string means none. */
@@ -173,7 +201,7 @@ const FITS: Fit[] = [
  */
 export async function makeResumePdf(text: string, template: TemplateId, links?: ProfileLinkUrls): Promise<Blob> {
   const { jsPDF } = await import("jspdf");
-  const blocks = parseResumeText(addProfileLinks(text, links));
+  const blocks = parseResumeText(addProfileLinks(resumeForTemplate(text), links));
   for (const fit of FITS) {
     const doc = renderResume(new jsPDF({ unit: "pt", format: "letter" }), blocks, template, fit);
     if (doc.getNumberOfPages() === 1) return doc.output("blob");
@@ -267,21 +295,30 @@ function renderResume(doc: Doc, blocks: Block[], template: TemplateId, fit: Fit)
 
   /** Draws words left to right from x; links get the accent color, an underline, and a click target. Returns the end x. */
   const drawWords = (row: Word[], x: number, base: number, size: number, styleOf: (w: Word) => Style, plain: Rgb = INK) => {
-    row.forEach((w, n) => {
-      face(size, styleOf(w));
-      const ww = doc.getTextWidth(w.text);
-      // A link of several words gets one unbroken underline.
-      const joined = w.url && row[n + 1]?.url === w.url ? doc.getTextWidth(" ") : 0;
-      ink(w.url && modern ? ACCENT : plain);
-      doc.text(w.text, x, base);
-      if (w.url) {
-        doc.link(x, base - size, ww, size * 1.25, { url: w.url });
+    // Neighbouring words with the same style and link are drawn as one run with its spaces. Drawing each word on
+    // its own left gaps that PDF viewers could close up when they swap in their own version of the font, so words
+    // ran together ("Technicalbackground").
+    const runs: { text: string; url?: string; style: Style }[] = [];
+    for (const w of row) {
+      const style = styleOf(w);
+      const last = runs[runs.length - 1];
+      if (last && last.url === w.url && last.style === style) last.text += ` ${w.text}`;
+      else runs.push({ text: w.text, url: w.url, style });
+    }
+    for (const r of runs) {
+      face(size, r.style);
+      const ww = doc.getTextWidth(r.text);
+      ink(r.url && modern ? ACCENT : plain);
+      doc.text(r.text, x, base);
+      if (r.url) {
+        doc.link(x, base - size, ww, size * 1.25, { url: r.url });
         doc.setDrawColor(...(modern ? ACCENT : INK));
         doc.setLineWidth(0.4);
-        doc.line(x, base + 1.2, x + ww + joined, base + 1.2);
+        doc.line(x, base + 1.2, x + ww, base + 1.2);
       }
-      x += ww + doc.getTextWidth(" ");
-    });
+      // A little extra room where the style or link changes, for the same reason.
+      x += ww + doc.getTextWidth(" ") * 1.25;
+    }
     return x;
   };
 
@@ -312,13 +349,13 @@ function renderResume(doc: Doc, blocks: Block[], template: TemplateId, fit: Fit)
   const leadIn = (i: number): number => {
     const b = blocks[i];
     if (!b) return 0;
-    if (b.kind === "text" && parseEntryLine(b.text)) {
+    if (entryAt(blocks, i)) {
       return sp(5) + entrySize * LEAD + sp(2) + (blocks[i + 1]?.kind === "bullet" ? body * LEAD : 0);
     }
     return body * LEAD;
   };
 
-  const writeEntry = (entry: NonNullable<ReturnType<typeof parseEntryLine>>, i: number) => {
+  const writeEntry = (entry: NonNullable<ReturnType<typeof entryAt>>, i: number) => {
     y += sp(5); // space between roles
     room(leadIn(i));
     face(entrySize - 0.5);
@@ -374,7 +411,7 @@ function renderResume(doc: Doc, blocks: Block[], template: TemplateId, fit: Fit)
     }
     face(entrySize - 0.5);
     ink(modern ? MUTED : INK);
-    doc.text(entry.dates, PAGE.w - margin, base, { align: "right" });
+    if (entry.dates) doc.text(entry.dates, PAGE.w - margin, base, { align: "right" });
     for (const r of rest) if (r) write(r, { size: entrySize, style: roleStyle });
     y += sp(2);
   };
@@ -417,7 +454,7 @@ function renderResume(doc: Doc, blocks: Block[], template: TemplateId, fit: Fit)
         },
       });
     } else {
-      const entry = parseEntryLine(b.text);
+      const entry = entryAt(blocks, i);
       const words = entry ? null : linkedWords(b.text);
       if (entry) writeEntry(entry, i);
       else if (words) writeWords(words, { size: body, gap: sp(1) });
@@ -532,7 +569,7 @@ export function makeResumeDocx(text: string, template: TemplateId, links?: Profi
   const classic = template === "classic";
   const accent = "1D4ED8";
   const linkTargets: string[] = [];
-  const blocks = parseResumeText(addProfileLinks(text, links));
+  const blocks = parseResumeText(addProfileLinks(resumeForTemplate(text), links));
   /** Runs for a line with [label](url) links or web addresses in it; the links get the accent color and an underline. */
   const linkRuns = (line: string, plain: Omit<Run, "text"> = {}): Run[] => {
     // Words of one link ("Live demo") share a run, so the underline doesn't break at the space.
@@ -580,7 +617,7 @@ export function makeResumeDocx(text: string, template: TemplateId, links?: Profi
           ],
         };
       default: {
-        const entry = parseEntryLine(b.text);
+        const entry = entryAt(blocks, i);
         if (!entry) {
           const runs = linkedWords(b.text) ? linkRuns(b.text) : undefined;
           return { text: b.text, size: 11, keepNext: blocks[i - 1]?.kind === "heading", runs };
@@ -599,7 +636,7 @@ export function makeResumeDocx(text: string, template: TemplateId, links?: Profi
                 ? [{ text: "  |  ", italic: classic }, ...linkRuns(entry.role, { italic: classic })]
                 : [{ text: `  |  ${entry.role}`, italic: classic }]
               : []),
-            { text: `\t${entry.dates}`, size: 11, color: classic ? undefined : "5A626E" },
+            ...(entry.dates ? [{ text: `\t${entry.dates}`, size: 11, color: classic ? undefined : "5A626E" }] : []),
           ],
         };
       }

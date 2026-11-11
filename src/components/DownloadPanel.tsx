@@ -11,6 +11,7 @@ import {
   makeLetterPdf,
   makeResumeDocx,
   makeResumePdf,
+  resumeForTemplate,
   saveBlob,
   type TemplateId,
 } from "@/lib/resumeDoc";
@@ -43,7 +44,9 @@ export function DownloadPanel({
     website: normalizeUrl(links.website),
   };
   const [projectLinks, setProjectLinks] = useProjectLinks();
-  const projects = useMemo(() => (kind === "resume" ? findProjects(text) : []), [kind, text]);
+  // Read with '## ' headings even if the model or the person left them off, so projects are still found.
+  const resumeText = useMemo(() => (kind === "resume" ? resumeForTemplate(text) : text), [kind, text]);
+  const projects = useMemo(() => (kind === "resume" ? findProjects(resumeText) : []), [kind, resumeText]);
 
   const download = (format: "pdf" | "docx") =>
     request.run(
@@ -52,7 +55,7 @@ export function DownloadPanel({
           kind === "resume"
             ? format === "pdf" ? makeResumePdf : makeResumeDocx
             : format === "pdf" ? makeLetterPdf : makeLetterDocx;
-        const body = kind === "resume" ? addProjectLinks(text, projectLinks) : text;
+        const body = kind === "resume" ? addProjectLinks(resumeText, projectLinks) : text;
         saveBlob(await make(body, template, urls), `${stem}.${format}`);
       },
       { describe: () => "Couldn't build the file. Try the other format, or copy the text instead." },
