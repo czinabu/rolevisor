@@ -32,21 +32,54 @@ No account and no subscription. You pick where the AI runs:
 
 All taken from the built-in [example](https://rolevisor.vercel.app/example), which uses a made-up resume for "Sam" and a made-up posting.
 
-| Tailored resume | Keyword score, before and after |
-|---|---|
-| ![Tailored resume with AI fit score](docs/screenshots/example-tailored.png) | ![Keyword match score going from 24 to 78](docs/screenshots/example-keywords.png) |
-| **Cover letter** | **Suggestions** |
-| ![Cover letter with PDF and Word download](docs/screenshots/example-cover-letter.png) | ![Suggestions for the application](docs/screenshots/example-suggestions.png) |
-| **Formatting checks** | **Application log** |
-| ![Formatting and bullet checks](docs/screenshots/example-formatting.png) | ![Application log with a follow-up reminder](docs/screenshots/application-log.png) |
-| **Tailor page** | **Model settings** |
-| ![Tailor page with resume and job inputs](docs/screenshots/tailor.png) | ![Model settings: Claude, LM Studio, or Ollama](docs/screenshots/model-settings.png) |
+### Keyword score, before and after
+
+![Keyword match score going from 24 to 78, with keywords to double-check and ones still missing](docs/screenshots/example-keywords.png)
+
+### Tailored resume
+
+![Tailored resume with the AI fit score and the skills Sam has and is missing](docs/screenshots/example-tailored.png)
+
+### Cover letter
+
+![Cover letter with Classic or Modern template and PDF or Word download](docs/screenshots/example-cover-letter.png)
+
+<details>
+<summary><b>More screenshots</b>: suggestions, formatting checks, application log, settings, dark mode, and phone</summary>
+
+### Suggestions
+
+![Suggestions for the application, ranked by priority](docs/screenshots/example-suggestions.png)
+
+### Formatting checks
+
+![Formatting and spacing score with each check explained](docs/screenshots/example-formatting.png)
+
+### Application log
+
+![Application log with a follow-up reminder](docs/screenshots/application-log.png)
+
+### Tailor page
+
+![Tailor page listing what works without a model](docs/screenshots/tailor.png)
+
+### Model settings
+
+![Model settings: Claude, LM Studio, or Ollama](docs/screenshots/model-settings.png)
+
+### Dark mode
+
+![Home page in dark mode](docs/screenshots/home-dark.png)
+
+### On a phone
 
 <p>
-  <img src="docs/screenshots/home-dark.png" alt="Home page in dark mode" width="62%">
-  <img src="docs/screenshots/phone-tailor-dark.png" alt="Tailor page on a phone in dark mode" width="18%">
-  <img src="docs/screenshots/phone-example.png" alt="Example page on a phone" width="18%">
+  <img src="docs/screenshots/phone-example.png" alt="Example page on a phone" width="300">
+  &nbsp;
+  <img src="docs/screenshots/phone-tailor-dark.png" alt="Tailor page on a phone in dark mode" width="300">
 </p>
+
+</details>
 
 ## Using Rolevisor
 
