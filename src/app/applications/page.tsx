@@ -1,10 +1,16 @@
 "use client";
 
+import { DownloadPanel } from "@/components/DownloadPanel";
 import { PageHeader } from "@/components/PageHeader";
 import { useRef, useState } from "react";
 import {
+  FOLLOW_UP_DAYS,
   STATUSES,
+  addDays,
+  ago,
   download,
+  followUpIcs,
+  isDue,
   newApplication,
   parseImport,
   toCsv,
@@ -22,9 +28,7 @@ export default function ApplicationsPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const shown = apps.filter((a) => filter === "all" || a.status === filter);
-  const dueCount = apps.filter(
-    (a) => a.followUp && a.followUp <= today() && (a.status === "applied" || a.status === "heard_back"),
-  ).length;
+  const due = apps.filter((a) => isDue(a));
 
   function save(app: Application) {
     const exists = apps.some((a) => a.id === app.id);
@@ -109,10 +113,53 @@ export default function ApplicationsPage() {
           {message}
         </p>
       )}
-      {dueCount > 0 && (
-        <p className="rounded-lg border bg-card p-3 text-sm">
-          {dueCount} application{dueCount === 1 ? " is" : "s are"} ready for a follow-up.
-        </p>
+      {due.length > 0 && (
+        <section className="card space-y-3 border-accent p-4 text-sm" aria-labelledby="due-heading">
+          <h2 id="due-heading" className="font-medium">
+            Time to follow up ({due.length})
+          </h2>
+          <p className="text-muted">
+            You haven&apos;t heard back from {due.length === 1 ? "this one" : "these"} yet. A short,
+            polite email asking about the timeline is enough.
+          </p>
+          <ul className="space-y-2">
+            {due.map((a) => (
+              <li key={a.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line pt-2">
+                <span>
+                  <span className="font-medium">{a.role || "Untitled role"}</span>
+                  {a.company && <span className="text-muted"> at {a.company}</span>}
+                  {a.dateApplied && <span className="text-muted">, applied {ago(a.dateApplied)}</span>}
+                </span>
+                <span className="flex flex-wrap gap-2 sm:ml-auto">
+                  <button
+                    className="btn-secondary"
+                    onClick={() =>
+                      save({
+                        ...a,
+                        followUp: addDays(today(), FOLLOW_UP_DAYS),
+                        notes: [a.notes.trim(), `Followed up ${today()}.`].filter(Boolean).join("\n"),
+                      })
+                    }
+                  >
+                    I followed up
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    onClick={() => save({ ...a, followUp: addDays(today(), FOLLOW_UP_DAYS) })}
+                  >
+                    Remind me next week
+                  </button>
+                  <button className="btn-secondary" onClick={() => save({ ...a, status: "ghosted", followUp: "" })}>
+                    No response
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-muted">
+            &ldquo;I followed up&rdquo; adds a note and checks again in a week.
+          </p>
+        </section>
       )}
 
       {editing && <Editor app={editing} onSave={save} onCancel={() => setEditing(null)} />}
@@ -126,7 +173,7 @@ export default function ApplicationsPage() {
 
       <ul className="space-y-3">
         {shown.map((a) => {
-          const due = a.followUp && a.followUp <= today() && (a.status === "applied" || a.status === "heard_back");
+          const late = isDue(a);
           return (
             <li key={a.id} className="card p-4 text-sm">
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -146,9 +193,26 @@ export default function ApplicationsPage() {
                 </select>
               </div>
               <p className="mt-1 text-xs text-muted">
-                {a.dateApplied && `Applied ${a.dateApplied}`}
+                {a.dateApplied && `Applied ${a.dateApplied} (${ago(a.dateApplied)})`}
                 {a.followUp && (
-                  <span className={due ? "text-bad" : ""}> · Follow up {a.followUp}</span>
+                  <>
+                    <span className={late ? "text-bad" : ""}> · Follow up {a.followUp}</span>{" "}
+                    {a.followUp >= today() && (
+                      <button
+                        className="link"
+                        title="Download a calendar reminder for the follow-up date"
+                        onClick={() =>
+                          download(
+                            `follow-up-${(a.company || a.role || "job").toLowerCase().replace(/[^a-z0-9]+/g, "-")}.ics`,
+                            followUpIcs(a),
+                            "text/calendar",
+                          )
+                        }
+                      >
+                        Add to calendar
+                      </button>
+                    )}
+                  </>
                 )}
                 {a.link && (
                   <>
@@ -160,6 +224,7 @@ export default function ApplicationsPage() {
                 )}
               </p>
               {a.notes && <p className="mt-2 whitespace-pre-wrap">{a.notes}</p>}
+              <SavedFiles app={a} />
               <div className="mt-2 flex gap-4 text-xs">
                 <button className="link" onClick={() => setEditing(a)}>
                   Edit
@@ -188,6 +253,29 @@ function safeUrl(link: string) {
   return /^https?:\/\//i.test(withScheme) ? withScheme : "#";
 }
 
+/** The resume, cover letter and posting saved with an application, to read or download again. */
+function SavedFiles({ app }: { app: Application }) {
+  const files = [
+    { key: "resume", label: "Tailored resume", text: app.resume, kind: "resume" as const },
+    { key: "letter", label: "Cover letter", text: app.coverLetter, kind: "letter" as const },
+    { key: "posting", label: "Job posting", text: app.jobPosting, kind: null },
+  ].filter((f) => f.text.trim());
+  if (files.length === 0) return null;
+  return (
+    <div className="mt-3 space-y-2">
+      {files.map((f) => (
+        <details key={f.key} className="rounded-md border border-line px-3 py-2">
+          <summary className="cursor-pointer font-medium">{f.label}</summary>
+          <div className="mt-2 space-y-3">
+            <textarea className="field h-60 text-xs" readOnly value={f.text} aria-label={`${f.label} for ${app.company}`} />
+            {f.kind && <DownloadPanel text={f.text} kind={f.kind} jobPosting={app.jobPosting} />}
+          </div>
+        </details>
+      ))}
+    </div>
+  );
+}
+
 function Editor({
   app,
   onSave,
@@ -197,8 +285,16 @@ function Editor({
   onSave: (a: Application) => void;
   onCancel: () => void;
 }) {
-  const [draft, setDraft] = useState(app);
-  const set = (patch: Partial<Application>) => setDraft({ ...draft, ...patch });
+  // A new entry starts with a follow-up a week out.
+  const [draft, setDraft] = useState(() =>
+    !app.company && !app.role && !app.followUp ? { ...app, followUp: addDays(app.dateApplied, FOLLOW_UP_DAYS) } : app,
+  );
+  const set = (patch: Partial<Application>) => {
+    // Moving the applied date moves a follow-up that was still the default week after it.
+    const auto = draft.followUp === addDays(draft.dateApplied, FOLLOW_UP_DAYS);
+    const followUp = patch.dateApplied !== undefined && auto ? addDays(patch.dateApplied, FOLLOW_UP_DAYS) : undefined;
+    setDraft({ ...draft, ...patch, ...(followUp !== undefined ? { followUp } : {}) });
+  };
   const ok = draft.company.trim() || draft.role.trim();
 
   return (

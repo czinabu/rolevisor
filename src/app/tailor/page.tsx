@@ -30,17 +30,11 @@ import {
 } from "@/lib/tailor";
 import { useSettings } from "@/lib/useSettings";
 import { useStoredState } from "@/lib/useStoredState";
-import { addApplication, newApplication } from "@/lib/applications";
+import { SaveToLogCard } from "@/components/SaveToLogCard";
 import { ApplicationKitCard } from "@/components/ApplicationKitCard";
 import { KIT_STEPS, makeApplicationKit, type ApplicationKit, type KitStep } from "@/lib/applicationKit";
 
 type Inputs = TailorRequest;
-
-/** Saving the tailored job to the application log, one step at a time. */
-type LogStep =
-  | { step: "offer" }
-  | { step: "form"; company: string; role: string }
-  | { step: "saved" };
 
 interface Tailored extends Partial<Omit<ApplicationKit, "result">> {
   result: TailorResult;
@@ -107,19 +101,12 @@ export default function TailorPage() {
   const [stored, setStored] = useStoredState<{ layout: ResumeLayout | null }>("job-helper:layout", { layout: null });
   const layout = stored.layout;
   const setLayout = (layout: ResumeLayout | null) => setStored({ layout });
-  // Saving this job to the application log: offered, then a short form, then saved.
-  const [log, setLog] = useState<LogStep>({ step: "offer" });
+  // The cover letter as written or edited, so "Save to log" can keep it with the job.
+  const [letter, setLetter] = useState("");
   // "Get everything": the cover letter and suggestions come with the tailored resume.
   const [kitPref, setKitPref] = useStoredState<{ everything: boolean }>("job-helper:everything", { everything: true });
   const everything = kitPref.everything;
   const [kitStep, setKitStep] = useState<{ step: KitStep; index: number } | null>(null);
-  // The person's edits to the cover letter, so the downloads use them.
-  const [letterEdits, setLetterEdits] = useState<{ run: number; text: string } | null>(null);
-  const letterText = tailored
-    ? letterEdits?.run === tailored.run
-      ? letterEdits.text
-      : (tailored.letter?.letter ?? "")
-    : "";
 
   const setBackground = (patch: Partial<Background>) =>
     setInputs({ ...inputs, background: { ...inputs.background, ...patch } });
@@ -149,7 +136,6 @@ export default function TailorPage() {
       showResults(inputs.jobPosting.trim() ? "keywords" : "format");
       return;
     }
-    setLog({ step: "offer" });
     const run = (tailored?.run ?? 0) + 1;
     const done = await request.run(async () => {
       try {
@@ -460,7 +446,7 @@ export default function TailorPage() {
           <ApplicationKitCard
             kit={{ ...tailored, problems: tailored.problems ?? [] }}
             resume={tailoredText ?? tailored.result.tailoredResume}
-            letter={letterText}
+            letter={letter}
             originalResume={tailored.resume}
             jobPosting={inputs.jobPosting}
             background={inputs.background}
@@ -484,79 +470,6 @@ export default function TailorPage() {
                 background={inputs.background}
                 onEdit={(text) => setEdits({ source: tailored.result, text })}
               />
-              <div className="mt-8 card p-4 text-sm">
-                {log.step === "saved" ? (
-                  <p>
-                    Saved. See it in your{" "}
-                    <Link
-                      href="/applications"
-                      className="link"
-                    >
-                      application log
-                    </Link>
-                    .
-                  </p>
-                ) : log.step === "form" ? (
-                  <form
-                    className="flex flex-wrap gap-3"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      try {
-                        addApplication(
-                          newApplication({
-                            company: log.company.trim(),
-                            role: log.role.trim(),
-                          }),
-                        );
-                        setLog({ step: "saved" });
-                      } catch {
-                        request.fail(
-                          "Couldn't save to the log. Browser storage may be blocked.",
-                        );
-                      }
-                    }}
-                  >
-                    <input
-                      className="field w-auto flex-1"
-                      placeholder="Company"
-                      value={log.company}
-                      onChange={(e) =>
-                        setLog({ ...log, company: e.target.value })
-                      }
-                    />
-                    <input
-                      className="field w-auto flex-1"
-                      placeholder="Job title"
-                      value={log.role}
-                      onChange={(e) =>
-                        setLog({ ...log, role: e.target.value })
-                      }
-                    />
-                    <button
-                      className="btn"
-                      disabled={!log.company.trim() && !log.role.trim()}
-                    >
-                      Save
-                    </button>
-                  </form>
-                ) : (
-                  <div className="flex items-center gap-3">
-                    <span>Applying for this job?</span>
-                    <button
-                      className="btn-secondary"
-                      onClick={() =>
-                        setLog({
-                          step: "form",
-                          company: "",
-                          role: inputs.background.targetRole,
-                        })
-                      }
-                    >
-                      Save to log
-                    </button>
-                  </div>
-                )}
-              </div>
             </>
           ) : noModel ? (
             <NoModel feature="The tailored resume" />
@@ -658,11 +571,11 @@ export default function TailorPage() {
             <CoverLetterCard
               key={tailored?.everything ? tailored.run : 0}
               initial={tailored?.letter}
-              onLetter={(text) => tailored && setLetterEdits({ run: tailored.run, text })}
               resume={inputs.resume}
               background={inputs.background}
               jobPosting={inputs.jobPosting}
               settings={settings}
+              onLetterChange={setLetter}
             />
           ) : (
             <Empty>
@@ -670,6 +583,17 @@ export default function TailorPage() {
             </Empty>
           )}
         </div>
+
+        {(tailored || (ready && letter.trim())) && (
+          // Remounts for a new posting, so a saved job never picks up another job's files.
+          <SaveToLogCard
+            key={inputs.jobPosting}
+            resume={tailoredText ?? ""}
+            coverLetter={ready ? letter : ""}
+            jobPosting={inputs.jobPosting}
+            targetRole={inputs.background.targetRole}
+          />
+        )}
       </div>
     </div>
   );

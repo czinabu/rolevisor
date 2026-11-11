@@ -26,7 +26,19 @@ export interface Application {
   /** YYYY-MM-DD, or empty */
   followUp: string;
   notes: string;
+  /** The tailored resume sent with this application, or empty. */
+  resume: string;
+  /** The cover letter sent with this application, or empty. */
+  coverLetter: string;
+  /** The job posting text, kept because postings often come down after they close. */
+  jobPosting: string;
 }
+
+/** How long after applying to suggest a follow-up. */
+export const FOLLOW_UP_DAYS = 7;
+
+/** Statuses where a follow-up still makes sense. */
+const WAITING: readonly ApplicationStatus[] = ["applied", "heard_back"];
 
 export const today = () => new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD
 
@@ -40,6 +52,9 @@ export function newApplication(patch: Partial<Application> = {}): Application {
     status: "applied",
     followUp: "",
     notes: "",
+    resume: "",
+    coverLetter: "",
+    jobPosting: "",
     ...patch,
   };
 }
@@ -63,6 +78,9 @@ function clean(raw: unknown): Application | null {
     status: status in STATUSES ? (status as ApplicationStatus) : ((byLabel?.[0] as ApplicationStatus) ?? "applied"),
     followUp: str(r.followUp),
     notes: typeof r.notes === "string" ? r.notes : "",
+    resume: typeof r.resume === "string" ? r.resume : "",
+    coverLetter: typeof r.coverLetter === "string" ? r.coverLetter : "",
+    jobPosting: typeof r.jobPosting === "string" ? r.jobPosting : "",
   };
 }
 
@@ -75,9 +93,116 @@ export function loadApplications(): Application[] {
   }
 }
 
-/** Adds one entry straight to storage (used by "Save to log" on the home page). */
+/** Fired on this tab whenever the log is saved, so the nav badge stays current. */
+export const APPLICATIONS_EVENT = "rolevisor:applications";
+
+function store(apps: Application[]) {
+  localStorage.setItem(APPLICATIONS_KEY, JSON.stringify(apps));
+  window.dispatchEvent(new Event(APPLICATIONS_EVENT));
+}
+
+/** Adds one entry straight to storage (used by "Save to log" on the Tailor and Role finder pages). */
 export function addApplication(app: Application) {
-  localStorage.setItem(APPLICATIONS_KEY, JSON.stringify([app, ...loadApplications()]));
+  store([app, ...loadApplications()]);
+}
+
+/** Replaces a saved entry with the same id, or adds it if it was deleted meanwhile. */
+export function updateApplication(app: Application) {
+  const apps = loadApplications();
+  store(apps.some((a) => a.id === app.id) ? apps.map((a) => (a.id === app.id ? app : a)) : [app, ...apps]);
+}
+
+/** YYYY-MM-DD plus a number of days. Empty in, empty out. */
+export function addDays(date: string, days: number): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return "";
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Whole days from one YYYY-MM-DD to another. */
+export function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+}
+
+/** True when the follow-up date has come and the company still hasn't given an answer. */
+export function isDue(app: Application, on: string = today()): boolean {
+  return !!app.followUp && app.followUp <= on && WAITING.includes(app.status);
+}
+
+/** "today", "yesterday", "5 days ago". */
+export function ago(date: string, on: string = today()): string {
+  const n = daysBetween(date, on);
+  if (Number.isNaN(n)) return "";
+  if (n <= 0) return "today";
+  if (n === 1) return "yesterday";
+  return `${n} days ago`;
+}
+
+/** How many saved applications are ready for a follow-up, kept current as the log changes. */
+export function useDueCount() {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    const read = () => {
+      try {
+        setCount(loadApplications().filter((a) => isDue(a)).length);
+      } catch {
+        setCount(0);
+      }
+    };
+    read();
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === APPLICATIONS_KEY) read();
+    };
+    window.addEventListener(APPLICATIONS_EVENT, read);
+    window.addEventListener("storage", onStorage);
+    // A tab left open overnight should pick up reminders that came due.
+    window.addEventListener("focus", read);
+    return () => {
+      window.removeEventListener(APPLICATIONS_EVENT, read);
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", read);
+    };
+  }, []);
+  return count;
+}
+
+/**
+ * A calendar file with an all-day reminder on the follow-up date, so the reminder reaches the
+ * person even when Rolevisor isn't open. Works with Google Calendar, Apple Calendar and Outlook.
+ */
+export function followUpIcs(app: Application, now: Date = new Date()): string {
+  const esc = (v: string) => v.replace(/\\/g, "\\\\").replace(/[;,]/g, (c) => `\\${c}`).replace(/\r?\n/g, "\\n");
+  const day = app.followUp.replace(/-/g, "");
+  const next = addDays(app.followUp, 1).replace(/-/g, "");
+  const stamp = now.toISOString().replace(/[-:]/g, "").replace(/\.\d+/, "");
+  const what = [app.role, app.company].filter(Boolean).join(" at ");
+  const details = [
+    app.dateApplied && `Applied ${app.dateApplied}.`,
+    "A short, polite note asking about the timeline is enough.",
+    app.link,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Rolevisor//Application log//EN",
+    "BEGIN:VEVENT",
+    `UID:${app.id}-follow-up@rolevisor`,
+    `DTSTAMP:${stamp}`,
+    `DTSTART;VALUE=DATE:${day}`,
+    `DTEND;VALUE=DATE:${next}`,
+    `SUMMARY:${esc(`Follow up: ${what || "job application"}`)}`,
+    `DESCRIPTION:${esc(details)}`,
+    "BEGIN:VALARM",
+    "ACTION:DISPLAY",
+    `DESCRIPTION:${esc(`Follow up: ${what || "job application"}`)}`,
+    "TRIGGER:PT9H",
+    "END:VALARM",
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ].join("\r\n");
 }
 
 /** The application log, remembered in this browser only. */
@@ -93,7 +218,7 @@ export function useApplications() {
   const setApps = useCallback((next: Application[]) => {
     setAppsState(next);
     try {
-      localStorage.setItem(APPLICATIONS_KEY, JSON.stringify(next));
+      store(next);
     } catch {
       // Storage can be blocked; the log still works until the tab closes.
     }

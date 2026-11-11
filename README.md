@@ -22,6 +22,7 @@ You can use it with:
    The **Formatting** tab works without a key or model: it checks length, sections, bullets, contact details, and whether your dates use one style, and with a job posting it says whether LinkedIn and GitHub links would help.
 4. Want your own resume in a cleaner layout? On the **Formatting** tab, **Download your resume in a clean template** turns the resume you added into the Classic or Modern PDF or Word file, word for word. It runs entirely in your browser and needs no API key or model.
 5. Not sure what to apply for? Open **Role finder**. It suggests roles that fit your background and links to job searches on the big job boards. It doesn't list live openings.
+6. Applying? After tailoring, click **Save to log**. The **Application log** keeps the company, date, status, the tailored resume and cover letter you sent, and the posting, so you can download them again later. It reminds you to follow up a week later if you haven't heard back: a count appears on the Application log link, and **Add to calendar** puts the reminder in your own calendar. Everything stays in your browser, so download a backup now and then.
 
 If something isn't set up right, Test connection tells you what to fix in plain English.
 

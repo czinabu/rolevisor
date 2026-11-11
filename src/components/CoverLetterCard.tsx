@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DownloadPanel } from "@/components/DownloadPanel";
 import { Loading } from "@/components/Loading";
 import { runTask } from "@/lib/ai";
@@ -23,7 +23,7 @@ export function CoverLetterCard({
   jobPosting,
   settings,
   initial,
-  onLetter,
+  onLetterChange,
 }: {
   resume: string;
   background: Background;
@@ -31,22 +31,19 @@ export function CoverLetterCard({
   settings: ModelSettings;
   /** A letter already written, e.g. by "Get everything". Give the card a new key to load a new one. */
   initial?: CoverLetterResult;
-  /** Called with the letter whenever it's written or edited. */
-  onLetter?: (letter: string) => void;
+  /** Hears every new or edited version, so the page can save it with the application. */
+  onLetterChange?: (letter: string) => void;
 }) {
   const [tone, setTone] = useState<Tone>("professional");
   const [length, setLength] = useState<Length>("standard");
   const [instructions, setInstructions] = useState("");
-  const [letter, setLetterState] = useState(initial?.letter ?? "");
+  const [letter, setLetter] = useState(initial?.letter ?? "");
   const [notes, setNotes] = useState<string[]>(initial?.notes ?? []);
-  const setLetter = (text: string) => {
-    setLetterState(text);
-    onLetter?.(text);
-  };
   // The letter lives in its own state because the person can edit it after it's written.
   const request = useRequest<CoverLetterResult>();
   const { busy, error } = request;
   const [copied, setCopied] = useState(false);
+  useEffect(() => onLetterChange?.(letter), [letter, onLetterChange]);
 
   const ready = resume.trim() && jobPosting.trim();
 
