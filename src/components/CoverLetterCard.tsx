@@ -22,20 +22,23 @@ export function CoverLetterCard({
   background,
   jobPosting,
   settings,
+  initial,
   onLetterChange,
 }: {
   resume: string;
   background: Background;
   jobPosting: string;
   settings: ModelSettings;
+  /** A letter already written, e.g. by "Get everything". Give the card a new key to load a new one. */
+  initial?: CoverLetterResult;
   /** Hears every new or edited version, so the page can save it with the application. */
   onLetterChange?: (letter: string) => void;
 }) {
   const [tone, setTone] = useState<Tone>("professional");
   const [length, setLength] = useState<Length>("standard");
   const [instructions, setInstructions] = useState("");
-  const [letter, setLetter] = useState("");
-  const [notes, setNotes] = useState<string[]>([]);
+  const [letter, setLetter] = useState(initial?.letter ?? "");
+  const [notes, setNotes] = useState<string[]>(initial?.notes ?? []);
   // The letter lives in its own state because the person can edit it after it's written.
   const request = useRequest<CoverLetterResult>();
   const { busy, error } = request;

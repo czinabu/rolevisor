@@ -126,7 +126,8 @@ export function needsModel(settings: ModelSettings): boolean {
 
 /** What works with no API key and no local model. Shown on Settings and Tailor. */
 export const FREE_FEATURES = [
-  "Reading resumes from PDF, Word, or text, and job postings from screenshots",
+  "Reading resumes from PDF, Word, or text, and job postings from links or screenshots",
+  "The keyword match score against a job posting",
   "The formatting and spacing score on the Tailor page",
   "The application log, with CSV and JSON import and export",
   "The example results page",

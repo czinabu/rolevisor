@@ -103,3 +103,8 @@ export function downloadStem(kind: "resume" | "letter", text: string, company: s
   const name = nameSlug(text) || "my";
   return co ? `${name}-${co}` : `${name}-resume`;
 }
+
+/** The zip of everything for one job: "caleb-zinabu-acme-application", or "my-application". */
+export function kitStem(resume: string, company: string): string {
+  return [nameSlug(resume) || "my", slug(company), "application"].filter(Boolean).join("-");
+}
